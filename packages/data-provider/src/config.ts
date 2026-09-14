@@ -2054,6 +2054,10 @@ export const interfaceSchema = z
     webSearch: z.boolean().optional(),
     contextUsage: z.boolean().optional(),
     contextCost: z.boolean().optional(),
+    /** Opening the artifacts pane in its own browser window. Enabled by
+     *  default; a deployment that cannot use popups can turn it off and keep
+     *  the docked pane. */
+    artifactUndocking: z.boolean().optional(),
     feedback: z.boolean().optional(),
     currency: z
       .object({
@@ -2161,6 +2165,7 @@ export const interfaceSchema = z
     webSearch: true,
     contextUsage: true,
     contextCost: false,
+    artifactUndocking: true,
     feedback: true,
     peoplePicker: {
       users: true,
@@ -2361,7 +2366,7 @@ export type TStartupConfig = {
 
 export type TSharedLinkStartupInterface = Pick<
   Partial<TInterfaceConfig>,
-  'privacyPolicy' | 'termsOfService'
+  'privacyPolicy' | 'termsOfService' | 'artifactUndocking'
 >;
 
 export type TSharedLinkStartupConfig = Pick<TStartupConfig, 'appTitle'> &
