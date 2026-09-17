@@ -3,7 +3,7 @@ import { useDrag } from 'react-dnd';
 import { Link2 } from 'lucide-react';
 import { useRecoilValue } from 'recoil';
 import { useParams } from 'react-router-dom';
-import { Constants } from 'librechat-data-provider';
+import { Constants, parseHermesConversationId } from 'librechat-data-provider';
 import { Spinner, useToastContext, useMediaQuery } from '@librechat/client';
 import type { TConversation } from 'librechat-data-provider';
 import type { ConversationDragItem } from './dnd';
@@ -110,7 +110,11 @@ function Conversation({
       pinned: conversation.pinned === true,
     }),
   });
-  dragConnector(draggable && canHoverPointer && !renaming ? containerRef : null);
+  dragConnector(
+    !parseHermesConversationId(conversationId) && draggable && canHoverPointer && !renaming
+      ? containerRef
+      : null,
+  );
 
   useEffect(() => {
     if (title !== previousTitle.current) {
@@ -267,7 +271,7 @@ function Conversation({
     chatProjectId: conversation.chatProjectId,
     isPopoverActive,
     onOpenChange: handlePopoverOpenChange,
-    isShiftHeld: isActiveConvo ? isShiftHeld : false,
+    isShiftHeld: isActiveConvo && !parseHermesConversationId(conversationId) ? isShiftHeld : false,
   };
 
   const generatingSpinner = (

@@ -1,3 +1,5 @@
+import SessionFiles from '~/components/Hermes/SessionFiles';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import { memo, useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useParams } from 'react-router-dom';
@@ -35,6 +37,7 @@ function Header({
   parentConversationId?: string;
   readOnly?: boolean;
 }) {
+  const backend = useChatBackend();
   const { data: startupConfig } = useGetStartupConfig();
   const navVisible = useRecoilValue(store.sidebarExpanded);
   const isSubmitting = useRecoilValue(store.isSubmittingFamily(0));
@@ -71,7 +74,7 @@ function Header({
     conversationId: isNewChat ? null : routeConversationId,
     traceViewer: interfaceConfig.traceViewer,
     isSubmitting,
-    enabled: parentConversationId == null,
+    enabled: !backend && parentConversationId == null,
   });
 
   /** The drawer covers the header on mobile; keep its controls out of the tab order. */
@@ -93,15 +96,16 @@ function Header({
           <SubagentThreadLink threadId={parentConversationId} labelClassName="hidden lg:inline" />
         )}
         {!readOnly && <ModelSelector startupConfig={startupConfig} />}
-        {!readOnly && interfaceConfig.presets === true && interfaceConfig.modelSelect === true && (
-          <PresetsMenu />
-        )}
-        {hasAccessToBookmarks === true && (
+        {!backend &&
+          !readOnly &&
+          interfaceConfig.presets === true &&
+          interfaceConfig.modelSelect === true && <PresetsMenu />}
+        {!backend && hasAccessToBookmarks === true && (
           <div className="hidden items-center md:flex">
             <BookmarkMenu />
           </div>
         )}
-        {hasAccessToMultiConvo === true && (
+        {!backend && hasAccessToMultiConvo === true && (
           <div className="hidden items-center md:flex">
             <AddMultiConvo />
           </div>
@@ -109,13 +113,20 @@ function Header({
       </div>
 
       <div className={cn('flex flex-shrink-0 items-center gap-2', hiddenBehindNav)}>
-        {hasAccessToTemporaryChat === true && <TemporaryChatIndicator />}
+        {backend?.files && !isNewChat && <SessionFiles key={backend.identity} />}
+        {!backend && hasAccessToTemporaryChat === true && <TemporaryChatIndicator />}
         {!isNewChat && <NewChat className="md:hidden" />}
-        <HeaderMenu startupConfig={startupConfig} trace={trace} className="md:hidden" />
+        {!backend && (
+          <HeaderMenu startupConfig={startupConfig} trace={trace} className="md:hidden" />
+        )}
         <div className="hidden items-center gap-2 md:flex">
           {trace.show && <TraceButton onClick={trace.open} />}
-          <ExportAndShareMenu isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false} />
-          {hasAccessToTemporaryChat === true && <TemporaryChat />}
+          {!backend && (
+            <ExportAndShareMenu
+              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+            />
+          )}
+          {!backend && hasAccessToTemporaryChat === true && <TemporaryChat />}
         </div>
       </div>
     </div>

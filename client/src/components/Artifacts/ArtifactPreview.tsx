@@ -1,4 +1,4 @@
-import React, { memo, useMemo, type MutableRefObject } from 'react';
+import React, { memo, useMemo, type Ref } from 'react';
 import { SandpackPreview, SandpackProvider } from '@codesandbox/sandpack-react/unstyled';
 import type {
   SandpackProviderProps,
@@ -21,7 +21,7 @@ export const ArtifactPreview = memo(function ({
   fileKey: string;
   template: SandpackProviderProps['template'];
   sharedProps: Partial<SandpackProviderProps>;
-  previewRef: MutableRefObject<SandpackPreviewRef>;
+  previewRef: Ref<SandpackPreviewRef>;
   currentCode?: string;
   startupConfig?: SandpackStartupConfig;
 }) {

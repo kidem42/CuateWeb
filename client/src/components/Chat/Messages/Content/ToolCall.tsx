@@ -22,6 +22,7 @@ import ProgressText from './ProgressText';
 import { TOOL_ROW_CLASSES } from './rows';
 import { ToolAuthWarning } from './auth';
 import store from '~/store';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 
 export default function ToolCall({
   initialProgress = 0.1,
@@ -52,6 +53,7 @@ export default function ToolCall({
   runStepStatus?: PartMetadata['runStepStatus'];
   runStepDurationMs?: PartMetadata['runStepDurationMs'];
 }) {
+  const native = useChatBackend()?.nativeTranscript === true;
   const localize = useLocalize();
   const [oauthError, setOAuthError] = useState<string | null>(null);
   const autoExpand = useRecoilValue(store.autoExpandTools);
@@ -209,13 +211,16 @@ export default function ToolCall({
    * cancellation inference read `initialProgress` while the label read the
    * animated `rawProgress`.
    */
-  const phase = resolveToolCallPhase({
-    runStepStatus,
-    displayProgress: rawProgress,
-    reportedProgress: initialProgress,
-    isSubmitting,
-    hasError,
-  });
+  const phase =
+    native && !isSubmitting && runStepStatus == null && initialProgress < 1 && output == null
+      ? 'unknown'
+      : resolveToolCallPhase({
+          runStepStatus,
+          displayProgress: rawProgress,
+          reportedProgress: initialProgress,
+          isSubmitting,
+          hasError,
+        });
 
   const handleToggleInfo = useCallback(() => {
     mountBody();
@@ -241,6 +246,7 @@ export default function ToolCall({
   const intent = useToolCallIntent(_args);
 
   const getFinishedText = () => {
+    if (phase === 'unknown') return localize('com_ui_hermes_result_unknown');
     if (phase === 'cancelled') {
       return localize('com_ui_cancelled');
     }

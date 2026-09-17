@@ -1,3 +1,4 @@
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import { memo, useMemo } from 'react';
 import {
   Constants,
@@ -29,6 +30,7 @@ function AttachFileChat({
   setFiles: FileSetter;
   setFilesLoading: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
+  const backend = useChatBackend();
   const conversationId = conversation?.conversationId ?? Constants.NEW_CONVO;
   const { endpoint } = conversation ?? { endpoint: null };
   const isAgents = useMemo(() => isAgentsEndpoint(endpoint), [endpoint]);
@@ -76,6 +78,17 @@ function AttachFileChat({
     () => isUnifiedUploadMode(endpointFileConfig, isPolicyResolved),
     [endpointFileConfig, isPolicyResolved],
   );
+
+  if (backend)
+    return backend.upload ? (
+      <AttachFile
+        disabled={disableInputs}
+        files={files}
+        setFiles={setFiles}
+        setFilesLoading={setFilesLoading}
+        conversation={conversation}
+      />
+    ) : null;
 
   if (isAssistants && endpointSupportsFiles && !isUploadDisabled) {
     return (

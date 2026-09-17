@@ -1,0 +1,9 @@
+# Add this site to your EXISTING proxy configuration; do not replace other sites.
+chat.example.com {
+    request_body {
+        max_size 64MB
+    }
+    reverse_proxy 127.0.0.1:3080 {
+        flush_interval -1
+    }
+}

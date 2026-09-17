@@ -1,3 +1,5 @@
+import NativeSkillDetail from './NativeSkillDetail';
+import { useNativeSkillCatalog } from '~/data-provider/Hermes/useSkillCatalog';
 import { Spinner, useMediaQuery } from '@librechat/client';
 import { PermissionTypes, Permissions } from 'librechat-data-provider';
 import { Navigate, useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
@@ -18,6 +20,7 @@ import { useGetSkillByIdQuery } from '~/data-provider';
  * Create is reached via `/skills/new`.
  */
 export default function SkillsView() {
+  const native = useNativeSkillCatalog();
   const { skillId } = useParams();
   const location = useLocation();
   const localize = useLocalize();
@@ -44,6 +47,41 @@ export default function SkillsView() {
     );
   }
 
+  if (native.connection) {
+    const skill = native.query.data?.data.find((item) => item.name === skillId);
+    if (skill && !native.query.isLoading && !native.query.isError) {
+      return (
+        <div className="flex h-full w-full flex-col bg-presentation">
+          <MobileSidebarToggle />
+
+          <NativeSkillDetail
+            key={`${native.connection.scope}:${skill.name}`}
+            name={skill.name}
+            description={skill.description}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex h-full w-full flex-col bg-presentation">
+        <MobileSidebarToggle />
+        {native.query.isLoading ? (
+          <Spinner />
+        ) : (
+          <SkillState
+            variant={native.query.isError ? 'error' : undefined}
+            title={
+              native.query.isError
+                ? localize('com_ui_skills_load_error')
+                : (skill?.name ?? localize('com_ui_skill_no_selection'))
+            }
+            description={skill?.description ?? localize('com_ui_skill_no_selection_desc')}
+          />
+        )}
+      </div>
+    );
+  }
   if (!hasAccess) {
     return <Navigate to="/c/new" replace />;
   }

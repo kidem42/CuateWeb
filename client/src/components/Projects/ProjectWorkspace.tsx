@@ -1,3 +1,4 @@
+import ProjectAccess from './Access';
 import { useCallback, useId, useMemo, useState } from 'react';
 import { useRecoilValue } from 'recoil';
 import * as Ariakit from '@ariakit/react';
@@ -34,7 +35,7 @@ function renderSortMenuItem(label: string, isSelected: boolean): RenderProp {
   };
 }
 
-export default function ProjectWorkspace() {
+function ProjectWorkspaceContent() {
   const localize = useLocalize();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -272,5 +273,13 @@ export default function ProjectWorkspace() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function ProjectWorkspace() {
+  return (
+    <ProjectAccess>
+      <ProjectWorkspaceContent />
+    </ProjectAccess>
   );
 }

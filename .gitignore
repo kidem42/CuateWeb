@@ -193,3 +193,14 @@ scripts/activity-labels/results/
 !e2e/lighthouse/librechat.yaml
 /.lighthouse/
 /e2e/lighthouse/.test-results/
+
+# Local CuateWeb test bundles
+/artifacts/
+
+__pycache__/
+
+# Machine-local notes and private keys
+/private/
+/.agents/
+AGENTS.override.md
+*.key

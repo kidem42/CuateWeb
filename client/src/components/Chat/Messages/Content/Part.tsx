@@ -39,6 +39,7 @@ import Container from './Container';
 import WebSearch from './WebSearch';
 import ToolCall from './ToolCall';
 import Image from './Image';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 
 type PartProps = {
   part?: TMessageContentParts;
@@ -61,6 +62,7 @@ const Part = memo(function Part({
   hideAttachments,
   onToolExpand,
 }: PartProps) {
+  const native = useChatBackend()?.nativeTranscript === true;
   if (!part) {
     return null;
   }
@@ -195,6 +197,19 @@ const Part = memo(function Part({
 
     const isToolCall =
       'args' in toolCall && (!toolCall.type || toolCall.type === ToolCallTypes.TOOL_CALL);
+    if (isToolCall && native)
+      return (
+        <ToolCall
+          args={toolCall.args ?? ''}
+          name={toolCall.name ?? ''}
+          toolCallId={toolCall.id}
+          output={toolCall.output}
+          initialProgress={toolCall.progress ?? 0.1}
+          isSubmitting={isSubmitting}
+          runStepStatus={toolCall.runStepStatus}
+          onExpand={onToolExpand}
+        />
+      );
     if (isToolCall) {
       const toolCallId =
         'id' in toolCall && typeof toolCall.id === 'string' ? toolCall.id : undefined;

@@ -1,3 +1,5 @@
+import { visit } from 'unist-util-visit';
+import type { Root } from 'hast';
 import 'katex/contrib/mhchem';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -48,7 +50,19 @@ export const getRemarkPlugins = (latexParsing = true): PluggableList => [
   mcpUIResourcePlugin,
 ];
 
+/** Preserve unlabelled HTML before syntax highlighting guesses a language. */
+const markNativeHtml = () => (tree: Root) => {
+  visit(tree, 'element', (node) => {
+    if (node.tagName !== 'code' || node.properties?.className) return;
+    const text = node.children.map((child) => (child.type === 'text' ? child.value : '')).join('');
+    if (/^\s*(?:<!doctype|<html)/i.test(text)) {
+      node.properties = { ...node.properties, dataNativeHtml: true };
+    }
+  });
+};
+
 export const getRehypePlugins = (): PluggableList => [
+  markNativeHtml,
   [rehypeKatex],
   [rehypeHighlight, { detect: true, ignoreMissing: true, subset: langSubset }],
 ];

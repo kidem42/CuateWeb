@@ -37,7 +37,9 @@ type EndpointSchema =
   | typeof bedrockInputSchema;
 
 export type EndpointSchemaKey = EModelEndpoint;
-type EndpointSchemaLookupKey = EModelEndpoint | Providers.OPENROUTER;
+type EndpointSchemaLookupKey =
+  | Exclude<EModelEndpoint, EModelEndpoint.hermes>
+  | Providers.OPENROUTER;
 
 const endpointSchemas: Record<EndpointSchemaLookupKey, EndpointSchema> = {
   [EModelEndpoint.openAI]: openAISchema,
@@ -67,7 +69,9 @@ const getFallbackEndpointSchema = <TSchema>(
   const overrideSchema = isEndpointSchemaLookupKey(defaultParamsEndpoint)
     ? schemas[defaultParamsEndpoint]
     : undefined;
-  return overrideSchema ?? schemas[endpointType];
+  return (
+    overrideSchema ?? (isEndpointSchemaLookupKey(endpointType) ? schemas[endpointType] : undefined)
+  );
 };
 
 // const schemaCreators: Record<EModelEndpoint, (customSchema: DefaultSchemaValues) => EndpointSchema> = {
@@ -182,7 +186,7 @@ export const parseConvo = ({
   possibleValues?: TPossibleValues;
   defaultParamsEndpoint?: string | null;
 }) => {
-  const primarySchema = endpointSchemas[endpoint] as EndpointSchema | undefined;
+  const primarySchema = isEndpointSchemaLookupKey(endpoint) ? endpointSchemas[endpoint] : undefined;
 
   if (!primarySchema && !endpointType) {
     throw new Error(`Unknown endpoint: ${endpoint}`);
@@ -351,7 +355,9 @@ export const parseCompactConvo = ({
     throw new Error(`undefined endpoint: ${endpoint}`);
   }
 
-  const primarySchema = compactEndpointSchemas[endpoint] as CompactEndpointSchema | undefined;
+  const primarySchema = isEndpointSchemaLookupKey(endpoint)
+    ? compactEndpointSchemas[endpoint]
+    : undefined;
 
   if (!primarySchema && !endpointType) {
     throw new Error(`Unknown endpoint: ${endpoint}`);

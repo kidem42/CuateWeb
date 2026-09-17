@@ -1,3 +1,4 @@
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import {
   createContext,
   useCallback,
@@ -424,6 +425,7 @@ function ApprovalStateProvider({
  * than crashing.
  */
 export function useResumeSubmit() {
+  const backend = useChatBackend();
   const jotaiStore = useStore();
   const chatContext = useContext(ChatContext);
   const conversation = chatContext?.conversation;
@@ -466,6 +468,17 @@ export function useResumeSubmit() {
 
   const submitToolApproval = useCallback(
     (actionId: string) => {
+      if (backend) {
+        const decisions = getDecisions(actionId);
+        if (!isReady(actionId) || !beginToolSubmission(actionId)) return;
+        setStatus(actionId, 'submitting');
+        void backend
+          .submitApproval(actionId, decisions)
+          .then(() => setStatus(actionId, 'submitted'))
+          .catch(() => setStatus(actionId, 'expired'));
+        // An unknown outcome stays locked until the controller explicitly checks status.
+        return;
+      }
       const fields = buildResumeFields();
       const decisions = getDecisions(actionId);
       if (!fields || decisions.length === 0 || !isReady(actionId)) {
@@ -497,6 +510,7 @@ export function useResumeSubmit() {
       );
     },
     [
+      backend,
       approvalMutation,
       beginToolSubmission,
       buildResumeFields,

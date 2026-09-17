@@ -1,3 +1,4 @@
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import { memo, useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import { useRecoilValue } from 'recoil';
@@ -45,9 +46,74 @@ function LoadingSpinner() {
 
 function ChatView({ index = 0, project }: { index?: number; project?: TChatProject }) {
   const { conversationId } = useParams();
-  const localize = useLocalize();
   const rootSubmission = useRecoilValue(store.submissionByIndex(index));
   const isSubmitting = useRecoilValue(store.isSubmittingFamily(index));
+  const {
+    data: messages = null,
+    isLoading,
+    isFetching,
+  } = useGetMessagesByConvoId(
+    conversationId ?? '',
+    {
+      enabled: !!conversationId && conversationId !== Constants.SEARCH,
+      /** Refetch stale caches on mount: navigation invalidates (not removes)
+       * messages now, so a warm conversation renders instantly from cache and
+       * reconciles in the background instead of unmounting into a spinner. */
+      refetchOnMount: true,
+    },
+    { isStreaming: isSubmitting },
+  );
+  const chatHelpers = useChatHelpers(index, conversationId);
+  const addedChatHelpers = useAddedResponse();
+
+  useAdaptiveSSE(rootSubmission, chatHelpers, false, index);
+
+  // Auto-resume if navigating back to conversation with active job.
+  // Wait for messages to load AND the warm-cache background revalidation to
+  // settle: a stale invalidated cache mounts with isLoading false while the
+  // refetch is in flight, and resume must not build from (or race) it.
+  useResumeOnLoad(conversationId, chatHelpers.getMessages, index, !isLoading && !isFetching);
+
+  // Show a server-owned queued follow-up as the next user turn as soon as its
+  // predecessor completes, ahead of the receipt and active-job polls.
+  const revealQueuedTurn = useQueuedTurnReveal(conversationId, index);
+
+  // Auto-send queued follow-up messages once a run finishes cleanly.
+  useQueueDrain(index, conversationId, chatHelpers.ask, revealQueuedTurn);
+
+  return (
+    <ChatSurface
+      index={index}
+      conversationId={conversationId}
+      project={project}
+      chatHelpers={chatHelpers}
+      addedChatHelpers={addedChatHelpers}
+      messages={messages}
+      isLoading={isLoading}
+    />
+  );
+}
+
+/** Shared chat UI. Controllers own transport, persistence and run recovery. */
+export function ChatSurface({
+  index = 0,
+  conversationId,
+  project,
+  chatHelpers,
+  addedChatHelpers,
+  messages,
+  isLoading,
+}: {
+  index?: number;
+  conversationId?: string;
+  project?: TChatProject;
+  chatHelpers: ReturnType<typeof useChatHelpers>;
+  addedChatHelpers: ReturnType<typeof useAddedResponse>;
+  messages: import('librechat-data-provider').TMessage[] | null;
+  isLoading: boolean;
+}) {
+  const backend = useChatBackend();
+  const localize = useLocalize();
   const saveDrafts = useRecoilValue(store.saveDrafts);
   const centerFormOnLanding = useRecoilValue(store.centerFormOnLanding);
   const pendingAction = useAtomValue(
@@ -68,50 +134,16 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
   });
 
   const fileMap = useFileMapContext();
-
-  const {
-    data: messages = null,
-    isLoading,
-    isFetching,
-  } = useGetMessagesByConvoId(
-    conversationId ?? '',
-    {
-      enabled: !!conversationId && conversationId !== Constants.SEARCH,
-      /** Refetch stale caches on mount: navigation invalidates (not removes)
-       * messages now, so a warm conversation renders instantly from cache and
-       * reconciles in the background instead of unmounting into a spinner. */
-      refetchOnMount: true,
-    },
-    { isStreaming: isSubmitting },
-  );
   const messagesTree = useMemo(() => {
     const dataTree = buildTree({ messages, fileMap });
     return dataTree?.length === 0 ? null : (dataTree ?? null);
   }, [messages, fileMap]);
-
-  const chatHelpers = useChatHelpers(index, conversationId);
-  const addedChatHelpers = useAddedResponse();
 
   const activeConversation =
     chatHelpers.conversation?.conversationId === conversationId
       ? chatHelpers.conversation
       : undefined;
   const activeSubagentThread = activeConversation?.subagentThread;
-
-  useAdaptiveSSE(rootSubmission, chatHelpers, false, index);
-
-  // Auto-resume if navigating back to conversation with active job.
-  // Wait for messages to load AND the warm-cache background revalidation to
-  // settle: a stale invalidated cache mounts with isLoading false while the
-  // refetch is in flight, and resume must not build from (or race) it.
-  useResumeOnLoad(conversationId, chatHelpers.getMessages, index, !isLoading && !isFetching);
-
-  // Show a server-owned queued follow-up as the next user turn as soon as its
-  // predecessor completes, ahead of the receipt and active-job polls.
-  const revealQueuedTurn = useQueuedTurnReveal(conversationId, index);
-
-  // Auto-send queued follow-up messages once a run finishes cleanly.
-  useQueueDrain(index, conversationId, chatHelpers.ask, revealQueuedTurn);
 
   let content: JSX.Element | null | undefined;
   const isLandingPage =
@@ -123,7 +155,8 @@ function ChatView({ index = 0, project }: { index?: number; project?: TChatProje
    *  carried that answer, so this is the same value before and after the config
    *  resolves. */
   const footerBelow = isLandingPage || configuredFooter;
-  const isNavigating = (!messagesTree || messagesTree.length === 0) && conversationId != null;
+  const isNavigating =
+    !backend && (!messagesTree || messagesTree.length === 0) && conversationId != null;
   const isProjectLandingPage = isLandingPage && project != null;
 
   if (isLoading && conversationId !== Constants.NEW_CONVO) {

@@ -1,3 +1,4 @@
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { v4 } from 'uuid';
 import { useAtomValue, useStore } from 'jotai';
@@ -437,7 +438,8 @@ export default function useSteering({
   const steerInterruptsByDefault = useRecoilValue(store.steerInterruptsByDefault);
 
   const endpoint = conversation?.endpointType ?? conversation?.endpoint;
-  const steerable = !isAssistantsEndpoint(endpoint);
+  const backend = useChatBackend();
+  const steerable = backend == null && !isAssistantsEndpoint(endpoint);
   const hasRealConvoId =
     conversationId != null && conversationId !== '' && conversationId !== Constants.NEW_CONVO;
   const serverQueueEnabled = isAgentsEndpoint(endpoint) && hasRealConvoId;

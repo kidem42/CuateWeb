@@ -1,0 +1,33 @@
+# Merge into librechat.yaml for a Hermes-only deployment. Preserve secrets and existing account settings.
+hermes:
+  formattingInstructions: true
+  connections:
+    - id: local
+      label: Hermes
+      apiURL: http://127.0.0.1:8642
+      apiKeyEnv: CUATEWEB_HERMES_API_KEY
+      dashboardURL: http://127.0.0.1:9119
+      dashboardKeyEnv: CUATEWEB_HERMES_DASHBOARD_KEY
+      userIds:
+        - REPLACE_WITH_LIBRECHAT_USER_ID
+      # tenantId: your-tenant-id  # required when the account belongs to a tenant
+  requestTimeoutMs: 30000
+  streamTimeoutMs: 600000
+  pollIntervalMs: 3000
+  historyPageSize: 500
+  maxHistoryPages: 40
+  maxUploadBytes: 10000000
+  maxChatBytes: 2500000
+  maxInlineImageBytes: 384000
+  imageMaxDimension: 1280
+  previewMaxBytes: 32000000
+  liveStaleMs: 1200000
+  growthHoldMs: 300000
+  stopConfirmMs: 20000
+
+# These are web-client features; Hermes retains its own tools, skills and MCP configuration.
+interface:
+  agents: { use: false, create: false, share: false, public: false }
+  remoteAgents: { use: false, create: false, share: false, public: false }
+  marketplace: { use: false }
+  mcpServers: { use: false, create: false, share: false, public: false, configureObo: false }

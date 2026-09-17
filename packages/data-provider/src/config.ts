@@ -32,6 +32,7 @@ import { ComponentTypes, SettingTypes, OptionTypes } from './generate';
 import { STATEFUL_CODE_ENVIRONMENTS } from './stateful-code';
 import { specsConfigSchema, TSpecsConfig } from './models';
 import { fileConfigSchema } from './file-config';
+import { hermesConfigSchema } from './hermes';
 import { isActionTool } from './types/tools';
 import { apiBaseUrl } from './api-endpoints';
 import { FileSources } from './types/files';
@@ -2854,6 +2855,7 @@ export const openIdDiscoverySchema = z.object({
 export type TOpenIdDiscoveryConfig = z.infer<typeof openIdDiscoverySchema>;
 
 export const configSchema = z.object({
+  hermes: hermesConfigSchema.optional(),
   version: z.string(),
   cache: z.boolean().default(true),
   ocr: ocrSchema.optional(),
@@ -3080,6 +3082,7 @@ export const defaultEndpoints: EModelEndpoint[] = [
 ];
 
 export const alternateName = {
+  [EModelEndpoint.hermes]: 'Hermes',
   [EModelEndpoint.openAI]: 'OpenAI',
   [EModelEndpoint.assistants]: 'Assistants',
   [EModelEndpoint.agents]: 'My Agents',

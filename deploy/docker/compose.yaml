@@ -1,0 +1,81 @@
+name: cuateweb
+services:
+  api:
+    image: cuateweb:hermes
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 127.0.0.1
+      PORT: ${PORT:-3080}
+      MONGO_URI: mongodb://127.0.0.1:${MONGO_PORT:-27417}/CuateWeb
+      MEILI_HOST: http://127.0.0.1:${MEILI_PORT:-27700}
+      RAG_API_URL: http://127.0.0.1:${RAG_PORT:-28000}
+      LIBRECHAT_TEMP_CREDENTIALS_PATH: /app/data/.env.temp
+    depends_on: [mongodb, meilisearch, rag_api]
+    volumes:
+      - ./librechat.yaml:/app/librechat.yaml:ro
+      - data:/app/data
+      - uploads:/app/uploads
+      - images:/app/client/public/images
+      - logs:/app/logs
+      - skill:/app/skill
+  mongodb:
+    image: mongo:8.0.20
+    restart: unless-stopped
+    ports: ['127.0.0.1:${MONGO_PORT:-27417}:27017']
+    volumes: ['mongo:/data/db']
+  meilisearch:
+    image: getmeili/meilisearch:v1.35.1
+    restart: unless-stopped
+    ports: ['127.0.0.1:${MEILI_PORT:-27700}:7700']
+    environment:
+      MEILI_NO_ANALYTICS: 'true'
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?Set MEILI_MASTER_KEY}
+    volumes: ['meili:/meili_data']
+  vectordb:
+    image: pgvector/pgvector:0.8.0-pg15-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cuateweb
+      POSTGRES_USER: cuateweb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes: ['postgres:/var/lib/postgresql/data']
+  rag_api:
+    image: registry.librechat.ai/danny-avila/librechat-rag-api-dev-lite:latest
+    restart: unless-stopped
+    depends_on: [vectordb]
+    env_file: .env
+    environment:
+      DB_HOST: vectordb
+      DB_PORT: 5432
+      POSTGRES_DB: cuateweb
+      POSTGRES_USER: cuateweb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      RAG_PORT: 8000
+    ports: ['127.0.0.1:${RAG_PORT:-28000}:8000']
+  # Configure ADMIN_PANEL_API_URL to a reachable HTTPS URL when enabling this profile.
+  admin-panel:
+    profiles: [admin]
+    image: registry.librechat.ai/clickhouse/librechat-admin-panel:latest
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["127.0.0.1:${ADMIN_PANEL_PORT:-3000}:3000"]
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      SESSION_SECRET: ${ADMIN_PANEL_SESSION_SECRET:-}
+      API_SERVER_URL: ${ADMIN_PANEL_API_URL:-https://chat.example.com}
+      VITE_API_BASE_URL: ${DOMAIN_CLIENT}
+      SESSION_COOKIE_SECURE: 'true'
+volumes:
+  data:
+  uploads:
+  images:
+  logs:
+  skill:
+  mongo:
+  meili:
+  postgres:

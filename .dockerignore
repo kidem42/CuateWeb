@@ -15,3 +15,14 @@ docs
 
 # Ignore all hidden files
 .*
+
+# Local distributions and deployment secrets never enter images.
+artifacts
+private
+**/.env
+**/.env.*
+**/librechat.yaml
+**/*.pem
+**/*.key
+
+**/__pycache__/

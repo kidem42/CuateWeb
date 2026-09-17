@@ -124,6 +124,8 @@ export * from './rum/proxy';
 /* OpenAPI */
 export { createOpenApiRouter } from './openapi/router';
 export type { OpenApiRouterDeps } from './openapi/router';
+export { createHermesRouter } from './hermes/router';
+export { hermesRequestContext } from './hermes/context';
 /* types */
 export type * from './mcp/types';
 export type * from './flow/types';

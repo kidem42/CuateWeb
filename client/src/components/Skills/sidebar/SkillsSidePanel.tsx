@@ -1,3 +1,7 @@
+import { useNativeSkillCatalog } from '~/data-provider/Hermes/useSkillCatalog';
+import { useNavigate } from 'react-router-dom';
+import SkillState from '../display/SkillState';
+import { Button } from '@librechat/client';
 import { useState, useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
 import { Spinner } from '@librechat/client';
@@ -23,12 +27,17 @@ interface SkillsSidePanelProps {
 
 export default function SkillsSidePanel({ className }: SkillsSidePanelProps) {
   const localize = useLocalize();
+  const navigate = useNavigate();
+  const native = useNativeSkillCatalog();
   const { skillId: activeSkillId } = useParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [sectionOpen, setSectionOpen] = useState(true);
   const debouncedSearch = useDebounce(searchTerm, 250);
 
-  const listQuery = useSkillsInfiniteQuery({ search: debouncedSearch || undefined, limit: 20 });
+  const listQuery = useSkillsInfiniteQuery(
+    { search: debouncedSearch || undefined, limit: 20 },
+    { enabled: !native.connection && !native.connections.isLoading },
+  );
 
   const pages = useMemo(() => listQuery.data?.pages ?? [], [listQuery.data]);
   const skills = useMemo(() => pages.flatMap((page) => page.skills), [pages]);
@@ -55,6 +64,7 @@ export default function SkillsSidePanel({ className }: SkillsSidePanelProps) {
     >
       <FilterSkills
         className="shrink-0 px-3 pb-2"
+        readOnly={!!native.connection}
         searchTerm={searchTerm}
         onSearchChange={(e) => setSearchTerm(e.target.value)}
       />
@@ -62,18 +72,57 @@ export default function SkillsSidePanel({ className }: SkillsSidePanelProps) {
       {/* Only the list scrolls */}
       <PanelContent
         ref={containerRef}
-        isLoading={listQuery.isLoading}
+        isLoading={
+          native.connections.isLoading ||
+          (native.connection ? native.query.isLoading : listQuery.isLoading)
+        }
         skeleton={<SkillListSkeleton />}
         className="px-3 pb-3"
       >
-        <SkillListPanel
-          skills={skills}
-          activeSkillId={activeSkillId}
-          sectionOpen={sectionOpen}
-          onSectionOpenChange={setSectionOpen}
-        />
+        {native.connection && native.query.isError ? (
+          <>
+            <SkillState
+              variant="error"
+              title={localize('com_ui_skills_load_error')}
+              description={localize('com_ui_hermes_skills_unavailable')}
+            />
+            <Button variant="outline" onClick={() => void native.query.refetch()}>
+              {localize('com_ui_retry')}
+            </Button>
+          </>
+        ) : (
+          <SkillListPanel
+            onSelect={
+              native.connection
+                ? (skill) =>
+                    navigate(
+                      `/skills/${encodeURIComponent(skill.name)}?hermes=${encodeURIComponent(native.connection!.id)}`,
+                    )
+                : undefined
+            }
+            skills={
+              native.connection
+                ? (native.query.data?.data ?? [])
+                    .filter((skill) =>
+                      `${skill.name} ${skill.description ?? ''}`
+                        .toLowerCase()
+                        .includes(debouncedSearch.toLowerCase()),
+                    )
+                    .map((skill) => ({
+                      _id: skill.name,
+                      name: skill.name,
+                      description: skill.description,
+                      fileCount: 0,
+                    }))
+                : skills
+            }
+            activeSkillId={activeSkillId}
+            sectionOpen={sectionOpen}
+            onSectionOpenChange={setSectionOpen}
+          />
+        )}
         {/* Appending the next page, so the loaded rows stay put */}
-        {listQuery.isFetchingNextPage && (
+        {!native.connection && listQuery.isFetchingNextPage && (
           <div className="flex shrink-0 justify-center py-2">
             <Spinner className="size-4" />
             <span className="sr-only" aria-live="polite" aria-atomic="true">

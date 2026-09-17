@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { Constants, ContentTypes } from 'librechat-data-provider';
+import { Constants, ContentTypes, hermesMessageViews } from 'librechat-data-provider';
+import { resolveToolCallPhase } from '~/utils/toolCallPhase';
 import type { TMessageContentParts } from 'librechat-data-provider';
 import Part from '../Part';
 
@@ -174,4 +175,47 @@ describe('Part tool renderer selection', () => {
     expect(screen.getByTestId('reasoning')).toBeInTheDocument();
     expect(screen.queryByTestId('reasoning-marker')).not.toBeInTheDocument();
   });
+});
+
+describe('Hermes history uses the stock tool renderer', () => {
+  it.each(['terminal', 'patch'])(
+    'renders completed %s results as tool details, not transcript text or cancellation',
+    (name) => {
+      const rows = hermesMessageViews('hermes.local.scope.session', {
+        truncated: false,
+        data: [
+          {
+            id: 1,
+            role: 'assistant',
+            content: '',
+            tool_calls: [{ id: 'call', function: { name, arguments: '{}' } }],
+          },
+          {
+            id: 2,
+            role: 'tool',
+            tool_call_id: 'call',
+            tool_name: name,
+            content: '{"success":true,"output":"OK"}',
+          },
+        ],
+      });
+      expect(rows).toHaveLength(1);
+      const part = rows[0].content?.find((item) => item.type === ContentTypes.TOOL_CALL);
+      expect(part).toBeDefined();
+      if (!part || part.type !== ContentTypes.TOOL_CALL || !('args' in part.tool_call))
+        throw Error('Expected stock tool call');
+      renderPart(part);
+      expect(screen.getByTestId('tool-call')).toBeInTheDocument();
+      expect(screen.queryByTestId('text')).not.toBeInTheDocument();
+      expect(part.tool_call.output).toBe('{"success":true,"output":"OK"}');
+      expect(
+        resolveToolCallPhase({
+          displayProgress: 1,
+          reportedProgress: part.tool_call.progress ?? 0,
+          isSubmitting: false,
+          hasError: false,
+        }),
+      ).toBe('completed');
+    },
+  );
 });

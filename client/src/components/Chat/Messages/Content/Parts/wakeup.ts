@@ -13,6 +13,7 @@ export type WakeupTask = {
 };
 
 export type WakeupDisplay = {
+  native?: boolean;
   kind: 'subagent' | 'background_tool';
   tasks: WakeupTask[];
 };

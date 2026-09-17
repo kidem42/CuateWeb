@@ -1,3 +1,4 @@
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import React, { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { v4 } from 'uuid';
 import debounce from 'lodash/debounce';
@@ -142,6 +143,16 @@ const mergeRecentUploads = (
 };
 
 const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: FileHandlingState) => {
+  const backend = useChatBackend();
+  const backendIdentityRef = useRef(backend?.identity);
+  backendIdentityRef.current = backend?.identity;
+  useEffect(() => {
+    backendIdentityRef.current = backend?.identity;
+    return () => {
+      backendIdentityRef.current = undefined;
+    };
+  }, [backend?.identity]);
+
   const localize = useLocalize();
   const queryClient = useQueryClient();
   const { showToast } = useToastContext();
@@ -810,6 +821,35 @@ const useFileHandlingCore = (params: UseFileHandling | undefined, fileState: Fil
   ): Promise<boolean> => {
     /** `FileList` is live: copy it before yielding, as callers reset the input synchronously */
     const fileList = Array.from(_files);
+    if (backend) {
+      const identity = backend.identity;
+      if (!backend.upload) return false;
+      fileState.setFilesLoading?.(true);
+      let accepted = false;
+      try {
+        for (const file of fileList) {
+          if (
+            backendIdentityRef.current !== identity ||
+            uploadLifecycle?.shouldCommit?.() === false
+          )
+            break;
+          const uploaded = await backend.upload(file);
+          if (
+            backendIdentityRef.current !== identity ||
+            uploadLifecycle?.shouldCommit?.() === false
+          )
+            break;
+          fileSetter((current) => new Map(current).set(uploaded.file_id, uploaded));
+          accepted = true;
+        }
+      } catch {
+        showToast({ message: localize('com_error_files_upload'), status: 'error' });
+      } finally {
+        if (backendIdentityRef.current === identity) fileState.setFilesLoading?.(false);
+      }
+      return accepted;
+    }
+
     const assignedFileId = uploadLifecycle?.fileId;
     if (assignedFileId) {
       uploadErrorCallbacks.set(assignedFileId, uploadLifecycle);

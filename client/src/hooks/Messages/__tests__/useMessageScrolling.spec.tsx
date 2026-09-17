@@ -1,4 +1,6 @@
 import React from 'react';
+import { ChatBackendContext } from '~/Providers/ChatBackendContext';
+import type { ChatBackend } from '~/Providers/ChatBackendContext';
 import { RecoilRoot } from 'recoil';
 import { Provider, createStore } from 'jotai';
 import { act, fireEvent, render, screen } from '@testing-library/react';
@@ -600,6 +602,7 @@ describe('useMessageScrolling navigation landing', () => {
     store: ReturnType<typeof createStore>,
     conversationId: string,
     messagesTree: TMessage[] | null,
+    native = false,
   ) => (
     <RecoilRoot>
       <Provider store={store}>
@@ -610,7 +613,11 @@ describe('useMessageScrolling navigation landing', () => {
             conversationId,
           })}
         >
-          <ScrollingHarness messagesTree={messagesTree} />
+          <ChatBackendContext.Provider
+            value={native ? ({ openAtLatest: true } as ChatBackend) : null}
+          >
+            <ScrollingHarness messagesTree={messagesTree} />
+          </ChatBackendContext.Provider>
         </MessagesViewContext.Provider>
       </Provider>
     </RecoilRoot>
@@ -620,14 +627,15 @@ describe('useMessageScrolling navigation landing', () => {
     conversationId: string,
     messagesTree: TMessage[] | null,
     autoScroll = true,
+    native = false,
   ) {
     const store = createStore();
     store.set(autoScrollAtom, autoScroll);
-    const view = render(harness(store, conversationId, messagesTree));
+    const view = render(harness(store, conversationId, messagesTree, native));
     return {
       ...view,
       rerenderWith: (nextId: string, nextTree: TMessage[] | null) =>
-        view.rerender(harness(store, nextId, nextTree)),
+        view.rerender(harness(store, nextId, nextTree, native)),
     };
   }
 
@@ -690,6 +698,15 @@ describe('useMessageScrolling navigation landing', () => {
 
     rerenderWith('conversation-3', treeFor('conversation-3'));
     expect(mockScrollToBottom).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens native history at the end even with the stock preference off, without re-landing', () => {
+    const { rerenderWith } = renderLanding('native', null, false, true);
+    expect(mockScrollToBottom).not.toHaveBeenCalled();
+    rerenderWith('native', treeFor('native'));
+    expect(mockScrollToBottom).toHaveBeenCalledTimes(1);
+    rerenderWith('native', treeFor('native'));
+    expect(mockScrollToBottom).toHaveBeenCalledTimes(1);
   });
 
   it('stays put when the setting is off', () => {

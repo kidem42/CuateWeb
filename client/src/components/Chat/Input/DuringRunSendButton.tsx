@@ -18,7 +18,19 @@ type ActionRow = SendAction;
 
 type DuringRunSendButtonProps = {
   control: Control<{ text: string }>;
-  steering: SteeringControls;
+  steering: Pick<
+    SteeringControls,
+    | 'effectiveAction'
+    | 'canSteer'
+    | 'pausedOnApproval'
+    | 'canControlGeneration'
+    | 'steerFromComposer'
+    | 'queueFromComposer'
+    | 'interruptSteer'
+    | 'interruptAndSend'
+  >;
+  availableActions?: ReadonlyArray<'steer' | 'queue' | 'interrupt-steer' | 'interrupt'>;
+  interruptsByDefault?: boolean;
   getText: () => string;
   onConsumed: () => void;
   /** External hold (e.g. uploads in flight), mirroring the normal send button. */
@@ -89,7 +101,8 @@ const DuringRunSendButton = React.memo(
      * deliberately stays non-preempting when CLICKED. No key reaches it in
      * this mode, so it shows none.
      */
-    const enterInterrupts = primary === 'steer' && steerInterruptsByDefault;
+    const enterInterrupts =
+      primary === 'steer' && (props.interruptsByDefault ?? steerInterruptsByDefault);
     /** The chord that submits the default action, if any still does. */
     let submitHint: string | undefined;
     if (verdicts.plainEnter === 'submit') {
@@ -107,7 +120,7 @@ const DuringRunSendButton = React.memo(
 
     const runAction = (action: (text: string) => boolean | void) => {
       const text = props.getText().trim();
-      if (text.length === 0) {
+      if (text.length === 0 || props.disabled === true) {
         return;
       }
       if (action(text) !== false) {
@@ -166,7 +179,15 @@ const DuringRunSendButton = React.memo(
 
     return (
       <SendActions
-        actions={rows}
+        actions={rows
+          .filter(
+            (row) =>
+              !props.availableActions || props.availableActions.some((key) => key === row.key),
+          )
+          .map((row) => ({
+            ...row,
+            disabled: props.disabled === true || row.disabled,
+          }))}
         label={localize('com_ui_during_run_actions')}
         anchor={
           <button

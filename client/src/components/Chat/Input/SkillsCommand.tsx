@@ -1,3 +1,5 @@
+import { useChatBackend } from '~/Providers/ChatBackendContext';
+import { useChatFormContext } from '~/Providers';
 import { memo, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ScrollText } from 'lucide-react';
 import { useSetRecoilState } from 'recoil';
@@ -17,7 +19,6 @@ import { isEphemeralAgent } from '~/common';
 import MentionItem from './MentionItem';
 import store from '~/store';
 
-const commandChar = '$';
 const ROW_HEIGHT = 44;
 const skillIcon = <ScrollText className="icon-md text-status-info" />;
 
@@ -88,6 +89,9 @@ function SkillsCommandContent({
   conversationId: string;
   agentId?: string | null;
 }) {
+  const backend = useChatBackend();
+  const commandChar = backend && textAreaRef.current?.value.startsWith('/') ? '/' : '$';
+  const methods = useChatFormContext();
   const localize = useLocalize();
   const setShowSkillsPopover = useSetAtom(showSkillsPopoverFamily(index));
   const setEphemeralAgent = useSetRecoilState(ephemeralAgentByConvoId(conversationId));
@@ -134,20 +138,28 @@ function SkillsCommandContent({
   }, [agentId, agentsMap]);
 
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useSkillsInfiniteQuery({ limit: 50 });
+    useSkillsInfiniteQuery({ limit: 50 }, { enabled: !backend });
 
   /* Auto-fetch all pages so client-side search covers the full catalog,
      not just the first page. The skills API is server-side capped. */
   useEffect(() => {
-    if (isError) {
+    if (backend || isError) {
       return;
     }
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
-  }, [hasNextPage, isFetchingNextPage, isError, fetchNextPage]);
+  }, [backend, hasNextPage, isFetchingNextPage, isError, fetchNextPage]);
 
   const skillOptions: MentionOption[] = useMemo(() => {
+    if (backend)
+      return (backend.skills?.items ?? []).map((skill) => ({
+        label: skill.name,
+        value: skill.name,
+        description: skill.description,
+        type: 'skill' as const,
+        icon: skillIcon,
+      }));
     if (!data?.pages) {
       return [];
     }
@@ -169,8 +181,10 @@ function SkillsCommandContent({
       });
     }
     return options;
-  }, [data?.pages, agentSkillIds, isActive]);
+  }, [backend, data?.pages, agentSkillIds, isActive]);
 
+  const loading = backend ? backend.skills?.loading : isLoading || isFetchingNextPage;
+  const failed = backend ? backend.skills?.error : isError;
   const [activeIndex, setActiveIndex] = useState(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -199,6 +213,16 @@ function SkillsCommandContent({
       setOpen(false);
       setShowSkillsPopover(false);
 
+      if (backend) {
+        const draft = methods.getValues('text');
+        methods.setValue(
+          'text',
+          `Use the skill ${JSON.stringify(mention.value)} for this request.\n${draft}`,
+          { shouldDirty: true },
+        );
+        textAreaRef.current?.focus();
+        return;
+      }
       setEphemeralAgent((prev) => {
         if (prev?.skills) {
           return prev;
@@ -220,6 +244,8 @@ function SkillsCommandContent({
       textAreaRef.current?.focus();
     },
     [
+      backend,
+      methods,
       setSearchValue,
       setOpen,
       setShowSkillsPopover,
@@ -336,17 +362,17 @@ function SkillsCommandContent({
             }, 150);
           }}
         />
-        {open && (isLoading || isFetchingNextPage) && matches.length === 0 && (
+        {open && loading && matches.length === 0 && (
           <div className="flex h-32 items-center justify-center text-text-primary">
             <Spinner />
           </div>
         )}
-        {open && isError && (
+        {open && failed && (
           <div className="p-4 text-center text-sm text-text-secondary">
             {localize('com_ui_skills_load_error')}
           </div>
         )}
-        {open && !isLoading && !isFetchingNextPage && !isError && matches.length === 0 && (
+        {open && !loading && !failed && matches.length === 0 && (
           <div className="p-4 text-center text-sm text-text-secondary">
             {localize(searchValue ? 'com_ui_no_skills_found' : 'com_ui_skills_empty')}
           </div>

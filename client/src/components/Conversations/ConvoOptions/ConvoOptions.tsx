@@ -2,7 +2,12 @@ import { useState, useId, useRef, memo, useCallback, useMemo } from 'react';
 import * as Ariakit from '@ariakit/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
-import { QueryKeys, PermissionTypes, Permissions } from 'librechat-data-provider';
+import {
+  parseHermesConversationId,
+  QueryKeys,
+  PermissionTypes,
+  Permissions,
+} from 'librechat-data-provider';
 import {
   DropdownPopup,
   Spinner,
@@ -77,6 +82,7 @@ function ConvoOptions({
   isActiveConvo: boolean;
   isShiftHeld?: boolean;
 }) {
+  const isHermes = !!parseHermesConversationId(conversationId);
   const localize = useLocalize();
   const queryClient = useQueryClient();
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
@@ -306,7 +312,8 @@ function ConvoOptions({
         label: localize('com_ui_share'),
         onClick: shareHandler,
         icon: <Share2 className="icon-sm mr-2 text-text-primary" aria-hidden="true" />,
-        show: startupConfig && startupConfig.sharedLinksEnabled && canCreateSharedLinks,
+        show:
+          !isHermes && startupConfig && startupConfig.sharedLinksEnabled && canCreateSharedLinks,
         ariaHasPopup: 'dialog' as const,
         ariaControls: 'share-conversation-dialog',
         /** NOTE: THE FOLLOWING PROPS ARE REQUIRED FOR MENU ITEMS THAT OPEN DIALOGS */
@@ -331,6 +338,7 @@ function ConvoOptions({
       },
       {
         label: localize('com_ui_duplicate'),
+        show: !isHermes,
         onClick: handleDuplicateClick,
         hideOnClick: false,
         icon: isDuplicateLoading ? (
@@ -341,6 +349,7 @@ function ConvoOptions({
       },
       {
         label: localize('com_ui_change_project'),
+        show: !isHermes,
         onClick: projectHandler,
         icon: <FolderInput className="icon-sm mr-2 text-text-primary" aria-hidden="true" />,
         ariaHasPopup: 'dialog' as const,
@@ -362,6 +371,7 @@ function ConvoOptions({
       },
       {
         label: localize(isArchived ? 'com_ui_unarchive' : 'com_ui_archive'),
+        show: !isHermes,
         onClick: handleArchiveClick,
         hideOnClick: false,
         icon: renderArchiveIcon(isArchiveLoading, isArchived, 'icon-sm mr-2 text-text-primary'),
@@ -387,6 +397,7 @@ function ConvoOptions({
       renameHandler,
       deleteHandler,
       isArchiveLoading,
+      isHermes,
       isArchived,
       isDuplicateLoading,
       handlePinClick,
@@ -411,7 +422,14 @@ function ConvoOptions({
       : 'opacity-0 focus:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 data-[open]:opacity-100',
   );
 
-  if (isShiftHeld && isActiveConvo && !isPopoverActive && !showShareDialog && !showDeleteDialog) {
+  if (
+    !isHermes &&
+    isShiftHeld &&
+    isActiveConvo &&
+    !isPopoverActive &&
+    !showShareDialog &&
+    !showDeleteDialog
+  ) {
     return (
       <div className="flex items-center gap-0.5">
         <button

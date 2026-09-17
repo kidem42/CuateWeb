@@ -7,6 +7,8 @@ import type { CurrencyConfig } from '~/utils';
 import useCompactConversation, { supportsCompaction } from '~/hooks/Chat/useCompactConversation';
 import { useGetLangfuseSessionLinkQuery, useGetStartupConfig } from '~/data-provider';
 import useTokenUsage from '~/hooks/Chat/useTokenUsage';
+import type { TokenUsageView } from '~/hooks/Chat/useTokenUsage';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import CompactAction from './CompactAction';
 import { formatTokens, cn } from '~/utils';
 import { useLocalize } from '~/hooks';
@@ -25,21 +27,23 @@ const SHOW_DELAY_MS = 100;
 const HIDE_DELAY_MS = 150;
 
 function TokenUsageIndicator({
-  index,
   conversation,
   isSubmitting,
   showCost,
   currency,
   langfuseConnectionAccess,
   compactionEnabled,
+  view,
 }: TokenUsageProps & {
   showCost: boolean;
   currency?: CurrencyConfig;
   langfuseConnectionAccess: boolean;
   compactionEnabled: boolean;
+  view:
+    | TokenUsageView
+    | Pick<TokenUsageView, 'usedTokens' | 'maxTokens' | 'percent' | 'isEstimate'>;
 }) {
   const localize = useLocalize();
-  const view = useTokenUsage({ index, conversation, isSubmitting });
   /** Owned here, not in the popover: `unmountOnHide` would otherwise lose the
    *  in-flight state the moment the pointer leaves. */
   const compaction = useCompactConversation();
@@ -241,13 +245,22 @@ function TokenUsageIndicator({
         {/* The popover owns its width, which the breakdown held only while it
             was the sole child of a shrink-to-fit box. */}
         <div className="w-72 space-y-3">
-          <Breakdown
-            view={view}
-            showCost={showCost}
-            compactionAvailable={compactionAvailable}
-            currency={currency}
-            langfuseSessionUrl={langfuseSession?.url ?? undefined}
-          />
+          {'branchTotals' in view ? (
+            <Breakdown
+              view={view}
+              showCost={showCost}
+              compactionAvailable={compactionAvailable}
+              currency={currency}
+              langfuseSessionUrl={langfuseSession?.url ?? undefined}
+            />
+          ) : (
+            <div className="space-y-2 text-sm">
+              <p>{usageAriaLabel}</p>
+              {view.isEstimate && (
+                <p className="text-text-secondary">{localize('com_ui_estimated')}</p>
+              )}
+            </div>
+          )}
           {compactionAvailable && (
             <>
               <div className="border-t border-border-light" role="separator" />
@@ -264,17 +277,43 @@ function TokenUsageIndicator({
   );
 }
 
+function StandardTokenUsageIndicator(
+  props: Omit<React.ComponentProps<typeof TokenUsageIndicator>, 'view'>,
+) {
+  const view = useTokenUsage(props);
+  return <TokenUsageIndicator {...props} view={view} />;
+}
+
 /** Config gate kept outside the indicator so disabled deployments mount nothing */
 const TokenUsage = memo(function TokenUsage(props: TokenUsageProps) {
   const { data: startupConfig } = useGetStartupConfig();
+  const backend = useChatBackend();
   /** Wait for config before mounting: until it loads `contextUsage === false`
    *  reads as undefined, so a disabled deployment would briefly mount the
    *  indicator and fire the token-config query on first load */
   if (startupConfig == null || startupConfig.interface?.contextUsage === false) {
     return null;
   }
+  if (backend) {
+    const usage = backend.contextUsage;
+    if (!usage) return null;
+    return (
+      <TokenUsageIndicator
+        {...props}
+        showCost={false}
+        langfuseConnectionAccess={false}
+        compactionEnabled={false}
+        view={{
+          usedTokens: usage.used,
+          maxTokens: usage.max,
+          percent: usage.percent,
+          isEstimate: usage.estimated,
+        }}
+      />
+    );
+  }
   return (
-    <TokenUsageIndicator
+    <StandardTokenUsageIndicator
       {...props}
       showCost={startupConfig.interface?.contextCost === true}
       currency={startupConfig.interface?.currency}

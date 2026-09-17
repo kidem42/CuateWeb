@@ -1,4 +1,6 @@
 export enum QueryKeys {
+  hermes = 'hermes',
+  hermesConnections = 'hermesConnections',
   messages = 'messages',
   sharedMessages = 'sharedMessages',
   sharedStartupConfig = 'sharedStartupConfig',
@@ -111,6 +113,7 @@ export const DynamicQueryKeys = {
 } as const;
 
 export enum MutationKeys {
+  hermes = 'hermes',
   subagentControl = 'subagentControl',
   enqueueAgentQueuedTurn = 'enqueueAgentQueuedTurn',
   cancelAgentQueuedTurn = 'cancelAgentQueuedTurn',

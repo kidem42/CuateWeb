@@ -610,3 +610,6 @@ export const getAllEffectivePermissions = (resourceType: ResourceType) =>
 // SharePoint Graph API Token
 export const graphToken = (scopes: string) =>
   `${BASE_URL}/api/auth/graph-token?scopes=${encodeURIComponent(scopes)}`;
+
+export const hermes = (connection?: string, action?: 'request' | 'stream' | 'upload') =>
+  `${apiBaseUrl()}/api/hermes${connection ? `/${encodeURIComponent(connection)}/${action ?? 'request'}` : ''}`;

@@ -12,7 +12,7 @@ import type { PartMetadata } from 'librechat-data-provider';
  * fourteenth. One value, read everywhere, is what stops it: two presentations
  * of the same card can no longer disagree about what happened.
  */
-export type ToolCallPhase = 'running' | 'completed' | 'cancelled' | 'failed';
+export type ToolCallPhase = 'running' | 'completed' | 'cancelled' | 'failed' | 'unknown';
 
 export interface ToolCallPhaseInput {
   /**

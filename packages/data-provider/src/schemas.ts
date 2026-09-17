@@ -21,6 +21,7 @@ export enum AuthType {
 export const authTypeSchema = z.nativeEnum(AuthType);
 
 export enum EModelEndpoint {
+  hermes = 'hermes',
   azureOpenAI = 'azureOpenAI',
   openAI = 'openAI',
   google = 'google',

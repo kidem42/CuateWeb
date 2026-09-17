@@ -32,6 +32,7 @@ import { isBashProgrammaticToolCall } from './routing';
 import SearchVerticals from './verticals';
 import { ROW_GLYPH_SLOT } from './rows';
 import store from '~/store';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 
 interface ToolMeta {
   name: string;
@@ -244,6 +245,7 @@ export default function ToolCallGroup({
   labelPart,
   withinActivityPhase = false,
 }: ToolCallGroupProps) {
+  const native = useChatBackend()?.nativeTranscript === true;
   const localize = useLocalize();
   const mcpIconMap = useMCPIconMap();
   const mcpServerNames = useMCPServerNames();
@@ -410,7 +412,8 @@ export default function ToolCallGroup({
   /** One verdict for the header's tense, its glyph and its icon animation —
    *  they read as a single control, so a group whose label already says
    *  "Asked 1 question" must not keep pulsing beside it. */
-  const isGroupLive = allAskQuestions ? !askQuestionsDone : !groupDone;
+  const ordinaryGroupLive = allAskQuestions ? !askQuestionsDone : !groupDone;
+  const isGroupLive = native ? isSubmitting && !groupDone : ordinaryGroupLive;
 
   /** For a single-tool group, lead with the tool's own (capitalized) label
    *  instead of the generic "Used 1 tool: name", which reads awkwardly. */
@@ -435,10 +438,10 @@ export default function ToolCallGroup({
     !(showThinking && hasReasoning) &&
     allCompleted &&
     (count >= 1 || activityLabelText.length > 0);
-  const suppressAutoExpand = withinActivityPhase && !hasPendingApproval;
+  const suppressAutoExpand = (native || withinActivityPhase) && !hasPendingApproval;
   const initialState = initialExpansionState?.userOverride === true ? initialExpansionState : null;
   const [isExpanded, setIsExpanded] = useState(
-    initialState?.isExpanded ?? (autoExpand || (!autoCollapse && !suppressAutoExpand)),
+    initialState?.isExpanded ?? (!native && (autoExpand || (!autoCollapse && !suppressAutoExpand))),
   );
   const [userOverride, setUserOverride] = useState(initialState != null);
   const [shouldRenderBody, setShouldRenderBody] = useState(isExpanded);
@@ -569,7 +572,10 @@ export default function ToolCallGroup({
   /** The generated line wins over the generic category verb — but only once
    *  it exists. An unfilled label part leaves the block rendering exactly as
    *  it would without the feature. */
-  const groupLabel = activityLabelText.length > 0 ? activityLabelText : resolveGroupLabel();
+  const ordinaryGroupLabel = activityLabelText.length > 0 ? activityLabelText : resolveGroupLabel();
+  const groupLabel = native
+    ? localize('com_ui_hermes_steps', { 0: String(count) })
+    : ordinaryGroupLabel;
   const groupDetailParts: string[] = [];
   if (searchesOnly && count > 1) {
     groupDetailParts.push(localize('com_ui_n_searches', { 0: String(count) }));

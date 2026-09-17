@@ -1,0 +1,19 @@
+[Unit]
+Description=CuateWeb (LibreChat with Hermes)
+After=network-online.target mongod.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cuateweb
+Group=cuateweb
+WorkingDirectory=/opt/cuateweb
+Environment=NODE_ENV=production
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env node api/server/index.js
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

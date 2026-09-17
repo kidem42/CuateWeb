@@ -16,6 +16,7 @@ import userEvent from '@testing-library/user-event';
 import { SkillsScope } from 'librechat-data-provider';
 import { render, screen } from '@testing-library/react';
 import type { TSkillSummary } from 'librechat-data-provider';
+import { ChatBackendContext } from '~/Providers/ChatBackendContext';
 
 const CONVO_ID = 'convo-1';
 
@@ -76,8 +77,10 @@ jest.mock('~/data-provider', () => ({
    test harness swaps the agents map in so cases can configure ephemeral
    vs. agent-scoped behavior without standing up a real provider. */
 const mockUseAgentsMapContext = jest.fn();
+const mockForm = { getValues: jest.fn(() => 'Draft'), setValue: jest.fn() };
 jest.mock('~/Providers', () => ({
   useAgentsMapContext: () => mockUseAgentsMapContext(),
+  useChatFormContext: () => mockForm,
 }));
 
 const mockIsActive = jest.fn();
@@ -607,3 +610,34 @@ describe('filterSkillsForPopover', () => {
     expect(out).toEqual([]);
   });
 });
+
+it.each(['/', '$'])(
+  'selects a native skill with %s without enabling a web agent tool',
+  async (prefix) => {
+    const user = userEvent.setup();
+    const textAreaRef = makeTextarea(`${prefix}Draft`, 1);
+    render(
+      <ChatBackendContext.Provider
+        value={{
+          identity: 'native',
+          label: 'Hermes',
+          skills: { items: [{ name: 'reports' }], loading: false, error: false },
+          send: jest.fn(),
+          steer: jest.fn(),
+          canSendDuringRun: false,
+          submitApproval: jest.fn(),
+        }}
+      >
+        <SkillsCommand index={0} textAreaRef={textAreaRef} conversationId={CONVO_ID} />
+      </ChatBackendContext.Provider>,
+    );
+    await user.click(await screen.findByRole('button', { name: /reports/i }));
+    expect(mockForm.setValue).toHaveBeenCalledWith(
+      'text',
+      'Use the skill "reports" for this request.\nDraft',
+      { shouldDirty: true },
+    );
+    expect(mockSetEphemeralAgent).not.toHaveBeenCalled();
+    expect(mockSetPendingManualSkills).not.toHaveBeenCalled();
+  },
+);

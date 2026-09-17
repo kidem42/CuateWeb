@@ -210,7 +210,8 @@ const HoverButtons = ({
   }
 
   const { isCreatedByUser, error } = message;
-  const isSubagentThreadReadOnly = conversation.subagentThread != null;
+  const isSubagentThreadReadOnly =
+    conversation.subagentThread != null || conversation.endpoint === 'hermes';
 
   const onEdit = () => {
     if (isEditing) {

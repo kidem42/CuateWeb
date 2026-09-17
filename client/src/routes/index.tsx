@@ -1,3 +1,4 @@
+import LegacyHermesRoute from '~/components/Hermes/LegacyRoute';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import {
   Login,
@@ -134,6 +135,10 @@ export const router = createBrowserRouter(
             {
               path: 'c/:conversationId?',
               element: <ChatRoute />,
+            },
+            {
+              path: 'hermes/:connectionId?/:sessionId?',
+              element: <LegacyHermesRoute />,
             },
             {
               path: 'search',

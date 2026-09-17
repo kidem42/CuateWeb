@@ -5,6 +5,7 @@ import type { TMessage } from 'librechat-data-provider';
 import { useMessagesConversation, useMessagesSubmission } from '~/Providers';
 import { reconcileMessageContentLayout } from './messageLayout';
 import useScrollToRef from '~/hooks/useScrollToRef';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import { autoScrollAtom } from '~/store/autoScroll';
 
 const resizeFollowThreshold = 120;
@@ -26,7 +27,8 @@ const prefersReducedMotion = () =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
-  const autoScroll = useAtomValue(autoScrollAtom);
+  const preference = useAtomValue(autoScrollAtom);
+  const autoScroll = useChatBackend()?.openAtLatest ?? preference;
 
   const scrollableRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);

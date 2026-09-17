@@ -1,3 +1,5 @@
+import { useActiveHermesConnection } from '~/data-provider/Hermes/useSkillCatalog';
+import { useHermesConversationRows } from '~/data-provider/Hermes/useConversationRows';
 import { useCallback, useEffect, useState, useMemo, memo, useRef } from 'react';
 import { useAtomValue } from 'jotai';
 import { useRecoilValue } from 'recoil';
@@ -29,9 +31,11 @@ const chatsHeaderTrailing = <ChatFilterMenu />;
 
 const ConversationsSection = memo(() => {
   const localize = useLocalize();
+  const { connection, connections } = useActiveHermesConnection();
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   const { setSidebarOpen } = useSidebarToggle();
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, user } = useAuthContext();
+  const hermes = useHermesConversationRows(user?.id);
   useTitleGeneration(isAuthenticated);
 
   const [isChatsExpanded, setIsChatsExpanded] = useLocalStorage('chatsExpanded', true);
@@ -87,9 +91,29 @@ const ConversationsSection = memo(() => {
     isFetchingNext: isFetchingNextPage,
   });
 
-  const conversations = useMemo(() => {
+  const standardConversations = useMemo(() => {
     return data ? data.pages.flatMap((page) => page.conversations) : [];
   }, [data]);
+
+  const conversations = useMemo(
+    () => [
+      ...standardConversations,
+      ...(!isArchivedView && tags.length === 0
+        ? hermes.conversations.filter(
+            (row) =>
+              !search.debouncedQuery ||
+              row.title?.toLowerCase().includes(search.debouncedQuery.toLowerCase()),
+          )
+        : []),
+    ],
+    [
+      standardConversations,
+      isArchivedView,
+      tags.length,
+      hermes.conversations,
+      search.debouncedQuery,
+    ],
+  );
 
   /** Pins are fetched on their own so one older than the first page of the chats list
    * still shows on first paint, instead of appearing only once that list scrolls to it.
@@ -195,7 +219,7 @@ const ConversationsSection = memo(() => {
         {/* `min-h-full` keeps the sections filling a tall sidebar, so the chats
             list still claims the space below them when there is little to show. */}
         <div ref={setScrollContent} className="flex min-h-full flex-col">
-          {!search.query && (
+          {!connection && !connections.isLoading && !search.query && (
             <ProjectsSection toggleNav={toggleNav} isAuthenticated={isAuthenticated} />
           )}
           {!search.query && (
@@ -217,14 +241,20 @@ const ConversationsSection = memo(() => {
             moveToTop={moveToTop}
             toggleNav={toggleNav}
             containerRef={conversationsRef}
-            loadMoreConversations={loadMoreConversations}
-            isLoading={isFetchingNextPage || isLoading}
+            loadMoreConversations={() => {
+              loadMoreConversations();
+              hermes.loadMore();
+            }}
+            isLoading={isFetchingNextPage || isLoading || hermes.isLoading}
             isSearchLoading={isSearchLoading || isPreviousData}
             isChatsExpanded={isChatsExpanded}
             setIsChatsExpanded={setIsChatsExpanded}
-            hasNextPage={computedHasNextPage}
-            isError={isError}
-            onRetry={retryConversations}
+            hasNextPage={computedHasNextPage || hermes.hasNextPage}
+            isError={isError || hermes.isError}
+            onRetry={() => {
+              retryConversations();
+              hermes.retry();
+            }}
             chatsHeaderTrailing={chatsHeaderTrailing}
             scrollViewport={scrollViewport}
             scrollContent={scrollContent}

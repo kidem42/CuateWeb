@@ -31,11 +31,14 @@ function WakeupTaskCard({
   task,
   kind,
   conversationId,
+  native = false,
 }: {
+  native?: boolean;
   task: WakeupTask;
   kind: WakeupDisplay['kind'];
   conversationId?: string | null;
 }) {
+  const [expanded, setExpanded] = useState(!native);
   const localize = useLocalize();
   const mcpServerNames = useMCPServerNames();
   const { isSharedConvo } = useShareContext();
@@ -93,7 +96,20 @@ function WakeupTaskCard({
           aria-hidden
           className={cn('shrink-0', status === 'failed' && 'text-status-error')}
         />
-        {title !== '' && <span className="min-w-0 truncate font-medium">{title}</span>}
+        {native ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-w-0 truncate"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <ChevronDown size={12} aria-hidden />
+            {title || localize('com_ui_hermes_service_report')}
+          </Button>
+        ) : (
+          title !== '' && <span className="min-w-0 truncate font-medium">{title}</span>
+        )}
         <span className="shrink-0">{localize(subagentStatusLabelKey(status))}</span>
         {selection != null && openPanel != null && (
           /** The trigger identity attributes let the panel's close handler
@@ -112,7 +128,7 @@ function WakeupTaskCard({
           </Button>
         )}
       </div>
-      {hasResult && (
+      {hasResult && expanded && (
         <div className="markdown prose prose-sm message-content light dark:prose-invert mt-2 max-h-96 w-full max-w-none overflow-y-auto break-words pr-1 text-text-primary">
           <MarkdownLite content={task.result} codeExecution={false} />
         </div>
@@ -137,7 +153,7 @@ const Wakeup = memo(function Wakeup({
   const mcpIconMap = useMCPIconMap();
   const mcpServerNames = useMCPServerNames();
   const autoExpand = useRecoilValue(store.autoExpandTools);
-  const [isExpanded, setIsExpanded] = useState(autoExpand);
+  const [isExpanded, setIsExpanded] = useState(display.native ? false : autoExpand);
   const { style: expandStyle, ref: expandRef } = useExpandCollapse(isExpanded);
   const { shouldRenderBody, mountBody, handleTransitionEnd } = useLazyCollapseBody(isExpanded);
 
@@ -148,6 +164,7 @@ const Wakeup = memo(function Wakeup({
 
   const anyFailed = display.tasks.some((task) => task.status === 'error');
   const headerLabel = useMemo(() => {
+    if (display.native) return localize('com_ui_hermes_service_report');
     if (display.kind === 'subagent') {
       const status = display.tasks[0]?.status ?? 'completed';
       return localize(SUBAGENT_HEADER_KEYS[status]);
@@ -160,7 +177,7 @@ const Wakeup = memo(function Wakeup({
         ? 'com_ui_wakeup_task_errored'
         : 'com_ui_wakeup_task_finished',
     );
-  }, [display.kind, display.tasks, localize]);
+  }, [display.native, display.kind, display.tasks, localize]);
 
   const nameSummary = useMemo(() => {
     if (display.kind === 'subagent') {
@@ -238,11 +255,14 @@ const Wakeup = memo(function Wakeup({
         {shouldRenderBody && (
           <div className="overflow-hidden" ref={expandRef}>
             <div className="py-0.5 pl-4">
-              <div className="mt-1 text-xs text-text-secondary">
-                {localize('com_ui_wakeup_explainer')}
-              </div>
+              {!display.native && (
+                <div className="mt-1 text-xs text-text-secondary">
+                  {localize('com_ui_wakeup_explainer')}
+                </div>
+              )}
               {display.tasks.map((task) => (
                 <WakeupTaskCard
+                  native={display.native}
                   key={task.taskId}
                   task={task}
                   kind={display.kind}

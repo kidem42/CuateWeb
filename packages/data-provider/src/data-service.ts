@@ -1,3 +1,10 @@
+import {
+  parseHermesConversationId,
+  hermesSessionView,
+  hermesMessageViews,
+} from './hermes/sessionView';
+import type { HermesSession, HermesHistory } from './hermes';
+import axios from 'axios';
 import type { AxiosResponse } from 'axios';
 import type {
   TTracePage,
@@ -7,10 +14,12 @@ import type {
   TTraceRecordDetail,
 } from './types/traces';
 import type { TInsightsAccessResponse, TInsightsParams, TInsightsResponse } from './types/insights';
+import type { HermesAccess, HermesRequest, HermesChat, HermesFrame } from './hermes';
 import type { TFileConfig } from './file-config';
 import type * as tl from './types/tools';
 import type * as t from './types';
 import * as permissions from './accessPermissions';
+import { createHermesDecoder } from './hermes';
 import * as endpoints from './api-endpoints';
 import { uploadEventStream } from './upload';
 import * as mcp from './types/mcpServers';
@@ -975,6 +984,19 @@ export function forkSharedConversation(
 }
 
 export function deleteConversation(payload: t.TDeleteConversationRequest) {
+  const identity = parseHermesConversationId(payload.conversationId);
+  if (identity) {
+    return hermesRequest<{ id: string; deleted: boolean }>(identity.connectionId, {
+      operation: 'delete',
+      sessionId: identity.sessionId,
+      scope: identity.scope,
+    }).then((result) => {
+      if (result.id !== identity.sessionId || result.deleted !== true) {
+        throw new Error('session_delete_unconfirmed');
+      }
+      return { acknowledged: true, deletedCount: 1 };
+    });
+  }
   return request.deleteWithOptions(endpoints.deleteConversation(), {
     data: { arg: payload },
   });
@@ -995,18 +1017,41 @@ export function getConversations(cursor: string): Promise<t.TGetConversationsRes
 }
 
 export function getConversationById(id: string): Promise<s.TConversation> {
+  const identity = parseHermesConversationId(id);
+  if (identity) {
+    return hermesRequest<{ session: HermesSession }>(identity.connectionId, {
+      operation: 'session',
+      sessionId: identity.sessionId,
+      scope: identity.scope,
+    }).then(({ session }) => {
+      if (session.id !== identity.sessionId) throw new Error('session_identity_changed');
+      return hermesSessionView({ id: identity.connectionId, scope: identity.scope }, session);
+    });
+  }
   return request.get(endpoints.conversationById(id));
 }
 
 export function updateConversation(
   payload: t.TUpdateConversationRequest,
 ): Promise<t.TUpdateConversationResponse> {
+  const identity = parseHermesConversationId(payload.conversationId);
+  if (identity) {
+    return hermesRequest(identity.connectionId, {
+      operation: 'rename',
+      sessionId: identity.sessionId,
+      scope: identity.scope,
+      title: payload.title,
+    }).then(() => getConversationById(payload.conversationId));
+  }
   return request.post(endpoints.updateConversation(), { arg: payload });
 }
 
 export function archiveConversation(
   payload: t.TArchiveConversationRequest,
 ): Promise<t.TArchiveConversationResponse> {
+  if (parseHermesConversationId(payload.conversationId)) {
+    return Promise.reject(new Error('hermes_archive_unsupported'));
+  }
   return request.post(endpoints.archiveConversation(), { arg: payload });
 }
 
@@ -1047,6 +1092,15 @@ export function assignConversationToProject(
 export function pinConversation(
   payload: t.TPinConversationRequest,
 ): Promise<t.TPinConversationResponse> {
+  const identity = parseHermesConversationId(payload.conversationId);
+  if (identity) {
+    return hermesRequest(identity.connectionId, {
+      operation: 'pin',
+      sessionId: identity.sessionId,
+      scope: identity.scope,
+      pinned: payload.pinned,
+    }).then(() => getConversationById(payload.conversationId));
+  }
   return request.post(endpoints.pinConversation(), { arg: payload });
 }
 
@@ -1095,6 +1149,14 @@ export const branchMessage = async (
 };
 
 export function getMessagesByConvoId(conversationId: string): Promise<s.TMessage[]> {
+  const identity = parseHermesConversationId(conversationId);
+  if (identity) {
+    return hermesRequest<HermesHistory>(identity.connectionId, {
+      operation: 'messages',
+      sessionId: identity.sessionId,
+      scope: identity.scope,
+    }).then((history) => hermesMessageViews(conversationId, history));
+  }
   if (
     conversationId === config.Constants.NEW_CONVO ||
     conversationId === config.Constants.PENDING_CONVO
@@ -1658,3 +1720,84 @@ export interface ActiveJobsResponse {
 export const getActiveJobs = (): Promise<ActiveJobsResponse> => {
   return request.get(endpoints.activeJobs());
 };
+
+export function getHermesConnections(): Promise<HermesAccess[]> {
+  return request.get(endpoints.hermes());
+}
+export function hermesRequest<T>(connection: string, input: HermesRequest): Promise<T> {
+  return request.post(endpoints.hermes(connection), input);
+}
+export async function downloadHermesFile(
+  connection: string,
+  path: string,
+  scope?: string,
+): Promise<Blob> {
+  const response = await axios.post<Blob>(
+    endpoints.hermes(connection),
+    { operation: 'download', path, scope },
+    { responseType: 'blob' },
+  );
+  return response.data;
+}
+export async function streamHermes(
+  connection: string,
+  input: HermesChat,
+  token: string,
+  signal: AbortSignal,
+  onFrame: (frame: HermesFrame) => void,
+) {
+  const response = await fetch(endpoints.hermes(connection, 'stream'), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(`Hermes HTTP ${response.status}`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const parse = createHermesDecoder(onFrame);
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      parse(decoder.decode(value, { stream: !done }), done);
+      if (done) {
+        break;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export function uploadHermesFile(
+  connection: string,
+  file: File,
+  scope?: string,
+): Promise<{ path: string }> {
+  const form = new FormData();
+  form.set('file', file);
+  if (scope) form.set('scope', scope);
+  return request.postMultiPart(endpoints.hermes(connection, 'upload'), form);
+}
+
+/** No auth-refresh interceptor, redirect or application retry may replay a decision. */
+export async function answerHermesApproval(
+  connection: string,
+  input: Extract<HermesRequest, { operation: 'approval' }>,
+  token: string,
+  signal: AbortSignal,
+): Promise<{ run_id: string; request_id: string; choice: string; resolved: number }> {
+  const response = await fetch(endpoints.hermes(connection, 'request'), {
+    method: 'POST',
+    redirect: 'error',
+    signal,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error('approval_response_unconfirmed');
+  }
+  return response.json();
+}

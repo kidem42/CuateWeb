@@ -24,12 +24,18 @@ import {
   useSharedFileDownload,
 } from '~/data-provider';
 import { getDownloadFilename, logger, sortPagesByRelevance, triggerDownload } from '~/utils';
+import MarkdownLite from './MarkdownLite';
+import { ArtifactPreview } from '~/components/Artifacts/ArtifactPreview';
+import useArtifactProps from '~/hooks/Artifacts/useArtifactProps';
+import { useRef } from 'react';
+import type { SandpackPreviewRef } from '@codesandbox/sandpack-react/unstyled';
 import CopyButton from '~/components/Messages/Content/CopyButton';
 import { useFileMapContext, useShareContext } from '~/Providers';
 import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 interface FilePreviewDialogProps {
+  fileLoader?: { preview: () => Promise<Blob>; download: () => Promise<Blob> };
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fileName: string;
@@ -86,7 +92,16 @@ function getDisplayType(fileType?: string, fileName?: string): string {
   return ext ? ext.toUpperCase() : 'File';
 }
 
+function HTMLFilePreview({ content, title }: { content: string; title: string }) {
+  const previewRef = useRef<SandpackPreviewRef>(null);
+  const props = useArtifactProps({
+    artifact: { id: title, title, type: 'text/html', content, lastUpdateTime: 0 },
+  });
+  return <ArtifactPreview {...props} previewRef={previewRef} />;
+}
+
 export default function FilePreviewDialog({
+  fileLoader,
   open,
   onOpenChange,
   fileName,
@@ -135,6 +150,9 @@ export default function FilePreviewDialog({
   const [isCopied, setIsCopied] = useState(false);
 
   const previewKind = showExtractedText ? false : getPreviewKind(fileName, fileType, fileSource);
+  const extension = getFileExtension(fileName);
+  const renderMarkdown = !showExtractedText && ['md', 'markdown'].includes(extension);
+  const renderHTML = !showExtractedText && ['html', 'htm'].includes(extension);
   const downloadFilename = getDownloadFilename(fileName, fileId, fileSource);
   const displayedText = showExtractedText ? (extractedPreview?.text ?? null) : fileContent;
   const isLoading =
@@ -159,14 +177,14 @@ export default function FilePreviewDialog({
     setFileBlobUrl(null);
     setPreviewError(false);
     setLoading(false);
-    if (!open || !fileId || !previewKind) {
+    if (!open || (!fileId && !fileLoader) || !previewKind) {
       return;
     }
 
     setLoading(true);
     const load = async () => {
       try {
-        const { data: blob } = await previewFile();
+        const blob = fileLoader ? await fileLoader.preview() : (await previewFile()).data;
         if (!blob) {
           throw new Error('Preview download unavailable');
         }
@@ -179,7 +197,9 @@ export default function FilePreviewDialog({
             setFileContent(text);
           }
         } else {
-          objectUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+          objectUrl = URL.createObjectURL(
+            previewKind === 'pdf' ? new Blob([blob], { type: 'application/pdf' }) : blob,
+          );
           setFileBlobUrl(objectUrl);
         }
       } catch {
@@ -199,13 +219,18 @@ export default function FilePreviewDialog({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [open, fileId, previewKind, previewFile, shareId, user?.id]);
+  }, [open, fileId, fileLoader, previewKind, previewFile, shareId, user?.id]);
 
   const handleDownload = useCallback(async () => {
-    if (!fileId) {
-      return;
-    }
+    if (!fileId && !fileLoader) return;
     try {
+      if (fileLoader) {
+        const blob = await fileLoader.download();
+        const url = URL.createObjectURL(blob);
+        triggerDownload(url, downloadFilename);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return;
+      }
       const result = await downloadFile();
       if (!result.data) {
         return;
@@ -214,7 +239,7 @@ export default function FilePreviewDialog({
     } catch (err) {
       logger.error('[FilePreviewDialog] Download failed:', err);
     }
-  }, [downloadFile, downloadFilename, fileId]);
+  }, [downloadFile, downloadFilename, fileId, fileLoader]);
 
   useEffect(() => {
     if (!open) {
@@ -251,7 +276,11 @@ export default function FilePreviewDialog({
   return (
     <OGDialog open={open} onOpenChange={onOpenChange}>
       <OGDialogContent
-        className="flex w-full max-w-4xl flex-col !overflow-hidden p-0"
+        className={
+          renderHTML || renderMarkdown
+            ? 'flex h-[85dvh] w-[calc(100%-2rem)] max-w-6xl flex-col !overflow-hidden p-0'
+            : 'flex w-full max-w-4xl flex-col !overflow-hidden p-0'
+        }
         showCloseButton={true}
       >
         <div className="shrink-0 px-6 pr-12 pt-6">
@@ -260,7 +289,7 @@ export default function FilePreviewDialog({
             <OGDialogDescription className="min-w-0 truncate">
               {metaParts.join(' · ')}
             </OGDialogDescription>
-            {fileId && (
+            {(fileId || fileLoader) && (
               <button
                 type="button"
                 onClick={handleDownload}
@@ -274,7 +303,13 @@ export default function FilePreviewDialog({
           </div>
         </div>
 
-        <div className="relative min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4">
+        <div
+          className={
+            renderHTML
+              ? 'relative min-h-0 flex-1 overflow-hidden px-4 pb-4 pt-4 sm:px-6 sm:pb-6'
+              : 'relative min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4 sm:px-6 sm:pb-6'
+          }
+        >
           {isLoading && (
             <div className="flex h-60 items-center justify-center rounded-lg bg-surface-secondary">
               <span className="shimmer text-sm text-text-secondary">
@@ -300,14 +335,26 @@ export default function FilePreviewDialog({
               )}
             </div>
           )}
-          {fileBlobUrl && !showExtractedText && (
+          {fileBlobUrl && previewKind === 'image' && (
+            <img
+              src={fileBlobUrl}
+              alt={fileName}
+              className="mx-auto max-h-[70vh] max-w-full object-contain"
+            />
+          )}
+          {fileBlobUrl && previewKind === 'pdf' && !showExtractedText && (
             <iframe
               src={fileBlobUrl}
               title={`${localize('com_ui_preview')}: ${fileName}`}
               className="h-[70vh] w-full rounded-lg border border-border-light"
             />
           )}
-          {displayedText !== null && !isLoading && !hasPreviewError && (
+          {displayedText !== null && !isLoading && !hasPreviewError && renderHTML && (
+            <div className="h-full min-h-0 w-full overflow-hidden rounded-lg border border-border-light">
+              <HTMLFilePreview content={displayedText} title={fileName} />
+            </div>
+          )}
+          {displayedText !== null && !isLoading && !hasPreviewError && !renderHTML && (
             <>
               <div className="pointer-events-none sticky top-0 z-10 flex justify-end pr-1">
                 <CopyButton
@@ -319,9 +366,16 @@ export default function FilePreviewDialog({
                 />
               </div>
               <div className="-mt-8 rounded-lg bg-surface-secondary p-4">
-                <pre className="whitespace-pre-wrap break-words pr-8 font-mono text-sm leading-6 text-text-primary">
-                  {displayedText}
-                </pre>
+                {renderMarkdown && (
+                  <div className="markdown prose dark:prose-invert max-w-none text-text-primary">
+                    <MarkdownLite content={displayedText} codeExecution={false} />
+                  </div>
+                )}
+                {!renderMarkdown && !renderHTML && (
+                  <pre className="whitespace-pre-wrap break-words pr-8 font-mono text-sm leading-6 text-text-primary">
+                    {displayedText}
+                  </pre>
+                )}
               </div>
             </>
           )}

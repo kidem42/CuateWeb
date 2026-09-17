@@ -1,3 +1,4 @@
+import ProjectAccess from './Access';
 import { useDeferredValue, useEffect, useId, useMemo, useState } from 'react';
 import * as Ariakit from '@ariakit/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -187,7 +188,7 @@ function ProjectGridSkeleton() {
   );
 }
 
-export default function ProjectsView() {
+function ProjectsViewContent() {
   const localize = useLocalize();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -367,5 +368,13 @@ export default function ProjectsView() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function ProjectsView() {
+  return (
+    <ProjectAccess>
+      <ProjectsViewContent />
+    </ProjectAccess>
   );
 }

@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
+import React, { useMemo, useState } from 'react';
 import { TooltipAnchor } from '@librechat/client';
 import { getConfigDefaults } from 'librechat-data-provider';
 import type { ModelSelectorProps } from '~/common';
@@ -12,7 +13,7 @@ import { ModelSelectorProvider, useModelSelectorContext } from './ModelSelectorC
 import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcuts';
 import { ModelSelectorChatProvider } from './ModelSelectorChatContext';
 import { getSelectedIcon, getDisplayValue } from './utils';
-import { CustomMenu as Menu } from './CustomMenu';
+import { CustomMenu as Menu, CustomMenuItem as MenuItem } from './CustomMenu';
 import DialogManager from './DialogManager';
 import { useLocalize } from '~/hooks';
 
@@ -129,7 +130,49 @@ function ModelSelectorContent() {
   );
 }
 
+function BackendModelSelector() {
+  const backend = useChatBackend();
+  const localize = useLocalize();
+  const [search, setSearch] = useState('');
+  const [pending, setPending] = useState(false);
+  const models = backend?.models;
+  return (
+    <Menu
+      label={models?.options.find((item) => item.id === models.selected)?.label ?? backend?.label}
+      disabled={!models || models.loading || models.disabled || pending}
+      aria-label={localize('com_ui_select_model')}
+      data-testid="model-selector-button"
+      searchValue={search}
+      onSearch={setSearch}
+      combobox={<input id="model-search" placeholder=" " />}
+      comboboxLabel={localize('com_endpoint_search_models')}
+    >
+      {models?.options
+        .filter((item) => item.label.toLowerCase().includes(search.toLowerCase()))
+        .map((item) => (
+          <MenuItem
+            key={item.id}
+            aria-selected={item.id === models.selected}
+            disabled={pending || models.disabled}
+            onClick={() => {
+              if (pending || models.disabled) return;
+              setPending(true);
+              void models
+                .select(item.id)
+                .catch(() => {})
+                .finally(() => setPending(false));
+            }}
+          >
+            {item.label}
+          </MenuItem>
+        ))}
+    </Menu>
+  );
+}
+
 export default function ModelSelector({ startupConfig }: ModelSelectorProps) {
+  const backend = useChatBackend();
+  if (backend) return <BackendModelSelector />;
   const interfaceConfig = startupConfig?.interface ?? defaultInterface;
   const modelSpecs = startupConfig?.modelSpecs?.list ?? [];
 

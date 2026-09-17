@@ -1,5 +1,5 @@
 import React, { memo, useMemo, useLayoutEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown from './MarkdownRenderer';
 import type { PluggableList } from 'unified';
 import type { ElementType } from 'react';
 import { ArtifactProvider, CodeBlockProvider } from '~/Providers';

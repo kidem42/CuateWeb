@@ -8,7 +8,8 @@ import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
 interface SkillListProps {
-  skills: TSkillSummary[];
+  skills: Pick<TSkillSummary, '_id' | 'name' | 'fileCount' | 'alwaysApply'>[];
+  onSelect?: (skill: Pick<TSkillSummary, '_id' | 'name'>) => void;
   activeSkillId?: string;
   sectionOpen: boolean;
   onSectionOpenChange: (open: boolean) => void;
@@ -17,6 +18,7 @@ interface SkillListProps {
 /** Collapsible skill list. Active/inactive toggling lives in the detail view. */
 export default function SkillList({
   skills,
+  onSelect,
   activeSkillId,
   sectionOpen,
   onSectionOpenChange,
@@ -57,6 +59,7 @@ export default function SkillList({
           ) : (
             skills.map((skill) => (
               <SkillListItem
+                onSelect={onSelect}
                 key={skill._id}
                 skill={skill}
                 isActive={skill._id === activeSkillId}

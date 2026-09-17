@@ -42,7 +42,7 @@ const defaultIdentifier = 'lc-no-identifier';
 export function Artifact({
   node: _node,
   ...props
-}: Artifact & {
+}: Pick<Artifact, 'identifier' | 'title' | 'type'> & {
   children: React.ReactNode | { props: { children: React.ReactNode } };
   node: unknown;
 }) {

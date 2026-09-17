@@ -1,3 +1,4 @@
+export * from './hermes';
 /* config */
 export * from './azure';
 export * from './bedrock';

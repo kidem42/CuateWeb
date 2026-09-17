@@ -3,6 +3,7 @@ import { useSetRecoilState } from 'recoil';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  parseHermesConversationId,
   QueryKeys,
   Constants,
   dataService,
@@ -227,6 +228,12 @@ const useNavigateToConvo = (index = 0) => {
   ) => {
     if (!conversation) {
       logger.warn('conversation', 'Conversation not provided to `navigateToConvo`');
+      return;
+    }
+    if (parseHermesConversationId(conversation.conversationId)) {
+      supersedeNavigation();
+      setSubmission(null);
+      navigate(`/c/${conversation.conversationId}`);
       return;
     }
     const { currentConvoId } = options || {};

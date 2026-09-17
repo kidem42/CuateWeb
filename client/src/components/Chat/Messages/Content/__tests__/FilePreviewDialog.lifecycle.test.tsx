@@ -15,6 +15,16 @@ const mockRevoke = jest.fn();
 const mockTriggerDownload = jest.fn();
 const mockUseFilePreview = jest.fn();
 
+jest.mock('../MarkdownLite', () => ({
+  __esModule: true,
+  default: ({ content }: { content: string }) => (
+    <div data-testid="rendered-markdown">{content}</div>
+  ),
+}));
+jest.mock('~/components/Artifacts/ArtifactPreview', () => ({
+  ArtifactPreview: () => <div data-testid="html-preview" />,
+}));
+jest.mock('~/hooks/Artifacts/useArtifactProps', () => ({ __esModule: true, default: () => ({}) }));
 jest.mock('recoil', () => ({ useRecoilValue: () => ({ id: 'owner' }) }));
 jest.mock('~/store', () => ({ user: {} }));
 jest.mock('~/Providers', () => ({
@@ -71,6 +81,95 @@ const props = {
 };
 
 describe('FilePreviewDialog lifecycle', () => {
+  it('routes Markdown files to the shared renderer instead of a raw pre block', async () => {
+    const loader = {
+      preview: async () => ({ text: async () => '# Report' }) as Blob,
+      download: jest.fn(),
+    };
+    const { container } = render(
+      <FilePreviewDialog
+        {...props}
+        fileId={undefined}
+        fileName="report.md"
+        fileType="text/markdown"
+        fileLoader={loader}
+      />,
+    );
+    await screen.findByTestId('rendered-markdown');
+    expect(container.querySelector('pre')).toBeNull();
+  });
+  it('routes HTML files to the stock sandbox preview', async () => {
+    const loader = {
+      preview: async () => ({ text: async () => '<title>Report</title>' }) as Blob,
+      download: jest.fn(),
+    };
+    render(
+      <FilePreviewDialog
+        {...props}
+        fileId={undefined}
+        fileName="report.html"
+        fileType="text/html"
+        fileLoader={loader}
+      />,
+    );
+    expect(await screen.findByTestId('html-preview')).toBeInTheDocument();
+  });
+  it('revokes an image preview URL when the dialog unmounts', async () => {
+    const create = URL.createObjectURL,
+      revoke = URL.revokeObjectURL;
+    URL.createObjectURL = jest.fn(() => 'blob:image');
+    URL.revokeObjectURL = jest.fn();
+    try {
+      const loader = {
+        preview: async () => new Blob(['image'], { type: 'image/png' }),
+        download: jest.fn(),
+      };
+      const view = render(
+        <FilePreviewDialog
+          {...props}
+          fileId={undefined}
+          fileName="image.png"
+          fileType="image/png"
+          fileLoader={loader}
+        />,
+      );
+      await waitFor(() => expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:image'));
+      view.unmount();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:image');
+    } finally {
+      URL.createObjectURL = create;
+      URL.revokeObjectURL = revoke;
+    }
+  });
+  it('uses the supplied native loader without accessing Mongo file IDs', async () => {
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = jest.fn(() => 'blob:native');
+    URL.revokeObjectURL = jest.fn();
+    const fileLoader = {
+      preview: jest.fn().mockResolvedValue(new Blob(['pdf'])),
+      download: jest.fn().mockResolvedValue(new Blob(['original'])),
+    };
+    try {
+      const view = render(
+        <FilePreviewDialog {...props} fileId={undefined} fileLoader={fileLoader} />,
+      );
+      await waitFor(() =>
+        expect(screen.getByTitle('com_ui_preview: report.pdf')).toHaveAttribute(
+          'src',
+          'blob:native',
+        ),
+      );
+      expect(mockOwnedPreview).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'com_ui_download report.pdf' }));
+      await waitFor(() => expect(fileLoader.download).toHaveBeenCalledTimes(1));
+      expect(mockDownload).not.toHaveBeenCalled();
+      view.unmount();
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
   it('renders an ordinary PDF and revokes its display URL on close', async () => {
     const originalCreate = URL.createObjectURL;
     const originalRevoke = URL.revokeObjectURL;

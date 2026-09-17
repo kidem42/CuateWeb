@@ -582,6 +582,8 @@ export type TOptionSettings = {
 };
 
 export interface ExtendedFile {
+  /** Ownership for uploads handled by a native chat backend. */
+  backendIdentity?: string;
   file?: File;
   file_id: string;
   temp_file_id?: string;

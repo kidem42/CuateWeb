@@ -9,6 +9,7 @@ import { RowMountProvider, useProgressiveRowMount } from '~/hooks/Messages';
 import { useChatSurface } from '~/components/Chat/Subagents/surface';
 import useThreadRows from '~/hooks/Messages/useThreadRows';
 import { steerOverlayHeightFamily } from '~/store/steer';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import { autoScrollAtom } from '~/store/autoScroll';
 import { FLAT_THREAD, ThreadList } from './Thread';
 import { fontSizeAtom } from '~/store/fontSize';
@@ -50,7 +51,8 @@ function MessagesViewContent({
   const { index, latestMessageDepth } = useChatContext();
   const isSubmitting = useRecoilValue(store.isSubmittingFamily(index));
   const { showScrollButton, maximizeChatSpace } = useChatSurface();
-  const autoScroll = useAtomValue(autoScrollAtom);
+  const preference = useAtomValue(autoScrollAtom);
+  const autoScroll = useChatBackend()?.openAtLatest ?? preference;
   /** Re-arm from the conversation that owns the RENDERED tree: the Recoil
    *  conversation id lags the route during warm-cache navigation, and keying
    *  off it would first mount the new tree unwindowed, then narrow it after

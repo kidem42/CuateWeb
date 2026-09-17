@@ -1,6 +1,13 @@
 import { useSetAtom } from 'jotai';
+import { hermesSessionsAtom } from '~/components/Hermes/state';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { dataService, MutationKeys, QueryKeys, defaultOrderQuery } from 'librechat-data-provider';
+import {
+  dataService,
+  MutationKeys,
+  QueryKeys,
+  defaultOrderQuery,
+  parseHermesConversationId,
+} from 'librechat-data-provider';
 import {
   Constants,
   defaultAssistantsVersion,
@@ -37,6 +44,8 @@ export const useUpdateConversationMutation = (
     (payload: t.TUpdateConversationRequest) => dataService.updateConversation(payload),
     {
       onSuccess: (updatedConvo, payload) => {
+        if (parseHermesConversationId(payload.conversationId))
+          void queryClient.invalidateQueries([QueryKeys.hermes]);
         const targetId = payload.conversationId || id;
         /* A rename carries only a title, so only the title is taken from its
          * response. Writing the whole conversation would also restore its
@@ -228,6 +237,8 @@ export const usePinConversationMutation = (
     (payload: t.TPinConversationRequest) => dataService.pinConversation(payload),
     {
       onSuccess: async (data, vars, context) => {
+        if (parseHermesConversationId(vars.conversationId))
+          void queryClient.invalidateQueries([QueryKeys.hermes]);
         /** A project drop can start a list refresh before its following unpin.
          * Cancel that older snapshot before publishing the authoritative pin result. */
         await Promise.all([
@@ -688,6 +699,7 @@ export const useDeleteConversationMutation = (
   unknown
 > => {
   const queryClient = useQueryClient();
+  const setHermesSessions = useSetAtom(hermesSessionsAtom);
 
   return useMutation(
     (payload: t.TDeleteConversationRequest) =>
@@ -705,6 +717,26 @@ export const useDeleteConversationMutation = (
         // TODO: CHECK THIS, no-op; restore if needed
       },
       onSuccess: (data, vars, context) => {
+        const native = parseHermesConversationId(vars.conversationId);
+        if (native) {
+          setHermesSessions((all) =>
+            Object.fromEntries(
+              Object.entries(all).map(([key, state]) => {
+                const binding = state.binding;
+                return [
+                  key,
+                  binding &&
+                  binding.connectionId === native.connectionId &&
+                  binding.scope === native.scope &&
+                  binding.sessionId === native.sessionId
+                    ? { binding, deleted: true }
+                    : state,
+                ];
+              }),
+            ),
+          );
+          void queryClient.invalidateQueries([QueryKeys.hermes]);
+        }
         const deletedConversation = vars.conversationId
           ? queryClient.getQueryData<t.TConversation>([QueryKeys.conversation, vars.conversationId])
           : undefined;

@@ -10,7 +10,8 @@ import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
 interface SkillListItemProps {
-  skill: TSkillSummary;
+  skill: Pick<TSkillSummary, '_id' | 'name' | 'fileCount' | 'alwaysApply'>;
+  onSelect?: (skill: Pick<TSkillSummary, '_id' | 'name'>) => void;
   isActive: boolean;
   isExpanded: boolean;
   activeFile: string | null;
@@ -257,6 +258,7 @@ function InlineFileTree({
 
 function SkillListItem({
   skill,
+  onSelect,
   isActive,
   isExpanded,
   activeFile,
@@ -268,18 +270,22 @@ function SkillListItem({
   // Fetch files for active skill (always, since cached fileCount may be stale)
   // or expanded skills. The response is small (metadata only, no content).
   const filesQuery = useListSkillFilesQuery(skill._id, {
-    enabled: isActive || (skill.fileCount > 0 && isExpanded),
+    enabled: !onSelect && (isActive || (skill.fileCount > 0 && isExpanded)),
   });
   const files = useMemo(() => filesQuery.data?.files ?? [], [filesQuery.data]);
   const hasFiles = files.length > 0 || skill.fileCount > 0;
   const expanded = hasFiles && isExpanded;
 
   const handleSkillClick = useCallback(() => {
+    if (onSelect) {
+      onSelect(skill);
+      return;
+    }
     navigate(`/skills/${skill._id}`);
     if (hasFiles && !isExpanded) {
       onToggleExpand(skill._id);
     }
-  }, [navigate, skill._id, hasFiles, isExpanded, onToggleExpand]);
+  }, [navigate, skill, onSelect, hasFiles, isExpanded, onToggleExpand]);
 
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {

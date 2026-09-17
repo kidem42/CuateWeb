@@ -1,7 +1,7 @@
 import React from 'react';
 import remarkGfm from 'remark-gfm';
 import supersub from 'remark-supersub';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown from './MarkdownRenderer';
 import rehypeHighlight from 'rehype-highlight';
 import type { PluggableList } from 'unified';
 import { code, codeNoExecution, a, p, img, table } from './MarkdownComponents';

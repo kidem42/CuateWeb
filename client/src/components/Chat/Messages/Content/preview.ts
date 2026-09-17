@@ -1,11 +1,13 @@
 import { FileSources } from 'librechat-data-provider';
 import type { TFile } from 'librechat-data-provider';
 
-type PreviewKind = 'pdf' | 'text' | false;
+type PreviewKind = 'pdf' | 'text' | 'image' | false;
 
 const TEXT_EXTENSIONS = new Set([
   'txt',
   'md',
+  'markdown',
+  'htm',
   'csv',
   'json',
   'xml',
@@ -55,6 +57,7 @@ function getPreviewKindByMime(mime?: string): PreviewKind {
   if (!mime) {
     return false;
   }
+  if (mime.startsWith('image/')) return 'image';
   if (mime.includes('pdf')) {
     return 'pdf';
   }
@@ -74,6 +77,7 @@ function getPreviewKindByMime(mime?: string): PreviewKind {
 
 function getPreviewKindByExtension(filename: string): PreviewKind {
   const extension = getFileExtension(filename);
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'].includes(extension)) return 'image';
   if (extension === 'pdf') {
     return 'pdf';
   }

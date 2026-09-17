@@ -1,3 +1,4 @@
+import HermesChatRoute from '~/components/Hermes/ChatRoute';
 import { useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRecoilCallback, useRecoilValue } from 'recoil';
@@ -48,7 +49,7 @@ import store from '~/store';
 const isValidChatProjectId = (projectId: string | null): projectId is string =>
   projectId != null && /^[a-f\d]{24}$/i.test(projectId);
 
-export default function ChatRoute() {
+function StandardChatRoute() {
   const { data: startupConfig } = useGetStartupConfig();
   const { isAuthenticated, user, roles } = useAuthRedirect();
   const queryClient = useQueryClient();
@@ -357,4 +358,8 @@ export default function ChatRoute() {
       <ChatView index={index} project={verifiedChatProjectId ? projectQuery.data : undefined} />
     </ToolCallsMapProvider>
   );
+}
+
+export default function ChatRoute() {
+  return <HermesChatRoute fallback={<StandardChatRoute />} />;
 }

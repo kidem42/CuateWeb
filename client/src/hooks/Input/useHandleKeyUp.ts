@@ -1,3 +1,4 @@
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useSetAtom } from 'jotai';
 import { useSetRecoilState, useRecoilValue } from 'recoil';
@@ -58,6 +59,7 @@ const useHandleKeyUp = ({
   index: number;
   textAreaRef: React.RefObject<HTMLTextAreaElement>;
 }) => {
+  const backend = useChatBackend();
   const hasPromptsAccess = useHasAccess({
     permissionType: PermissionTypes.PROMPTS,
     permission: Permissions.USE,
@@ -117,22 +119,26 @@ const useHandleKeyUp = ({
 
   const handleSkillsCommand = useCallback(() => {
     if (
-      !hasSkillsAccess ||
-      !skillsEnabled ||
-      !dollarCommandEnabled ||
+      (backend ? !backend.skills : !hasSkillsAccess || !skillsEnabled) ||
+      !(backend ? slashCommandEnabled : dollarCommandEnabled) ||
       isAssistantsEndpoint(endpoint)
     ) {
       return;
     }
-    if (shouldTriggerCommand(textAreaRef, '$')) {
+    if (
+      shouldTriggerCommand(textAreaRef, '$') ||
+      (backend && shouldTriggerCommand(textAreaRef, '/'))
+    ) {
       setShowSkillsPopover(true);
     }
   }, [
     textAreaRef,
     hasSkillsAccess,
     skillsEnabled,
+    backend,
     setShowSkillsPopover,
     dollarCommandEnabled,
+    slashCommandEnabled,
     endpoint,
   ]);
 
@@ -140,10 +146,10 @@ const useHandleKeyUp = ({
     () => ({
       '@': handleAtCommand,
       '+': handlePlusCommand,
-      '/': handlePromptsCommand,
+      '/': backend ? handleSkillsCommand : handlePromptsCommand,
       $: handleSkillsCommand,
     }),
-    [handleAtCommand, handlePlusCommand, handlePromptsCommand, handleSkillsCommand],
+    [backend, handleAtCommand, handlePlusCommand, handlePromptsCommand, handleSkillsCommand],
   );
 
   const handleUpArrow = useCallback(

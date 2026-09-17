@@ -1,3 +1,6 @@
+import { Button } from '@librechat/client';
+import { createAcknowledgedSender } from './acknowledgedSend';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
 import { memo, useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { useWatch } from 'react-hook-form';
 import { useRecoilState, useRecoilValue, useRecoilCallback } from 'recoil';
@@ -153,6 +156,9 @@ const ChatForm = memo(function ChatForm({
   handleStopGenerating,
   stopGenerating,
 }: ChatFormProps) {
+  const backend = useChatBackend();
+  const backendSender = useRef(createAcknowledgedSender());
+  const [backendPending, setBackendPending] = useState(false);
   const submitButtonRef = useRef<HTMLButtonElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   useFocusChatEffect(textAreaRef);
@@ -196,7 +202,8 @@ const ChatForm = memo(function ChatForm({
     [conversation?.spec, startupConfig],
   );
   const hideBadgeRow = modelSpec?.hideBadgeRow === true;
-  const filesLoading = useMemo(() => hasIncompleteFiles(files), [files]);
+  const filesLoading =
+    useMemo(() => hasIncompleteFiles(files), [files]) || backend?.uploadsPending === true;
   const conversationId = useMemo(
     () => conversation?.conversationId ?? Constants.NEW_CONVO,
     [conversation?.conversationId],
@@ -206,7 +213,10 @@ const ChatForm = memo(function ChatForm({
    * which the Assistants endpoints bypass — so hide the UI there rather than
    * letting users queue quotes the assistant never receives.
    */
-  const quotesEnabled = useMemo(() => !isAssistantsEndpoint(endpoint), [endpoint]);
+  const quotesEnabled = useMemo(
+    () => !backend && !isAssistantsEndpoint(endpoint),
+    [backend, endpoint],
+  );
 
   const isRTL = useMemo(
     () => (chatDirection != null ? chatDirection?.toLowerCase() === 'rtl' : false),
@@ -286,7 +296,7 @@ const ChatForm = memo(function ChatForm({
     setFiles,
     textAreaRef,
     conversationId,
-    isSubmitting,
+    isSubmitting: backend ? false : isSubmitting,
     // While a question pause is live the composer is the answer box: drafts
     // swap to the answer's own key, and the conversation draft is restored
     // when the question resolves.
@@ -413,12 +423,12 @@ const ChatForm = memo(function ChatForm({
    *  drop the steer, losing the text. Track mount so the restore refuses and the
    *  caller queues it instead. */
   const composerMountedRef = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    composerMountedRef.current = true;
+    return () => {
       composerMountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   /** A draft is anything the user has staged, not just typed: `editToComposer`
    *  MERGES the steer's attachments into the composer's file map and its quotes
@@ -472,11 +482,54 @@ const ChatForm = memo(function ChatForm({
     [methods, editToComposer, hasStagedComposerContext],
   );
 
+  const submitBackendText = useCallback(
+    (text: string, explicitSteer = false): false => {
+      if (!backend || filesLoading) return false;
+      const origin = conversationId;
+      const draft = methods.getValues('text');
+      const result = backendSender.current.submit(text, {
+        hasAttachments: files.size > 0,
+        send: explicitSteer || isSubmitting ? backend.steer : backend.send,
+        stillCurrent: () =>
+          composerMountedRef.current &&
+          liveConversationIdRef.current === origin &&
+          methods.getValues('text') === draft,
+        consume: () => {
+          methods.reset({ text: '' });
+          consumeDraft();
+        },
+        settled: () => {
+          if (composerMountedRef.current) setBackendPending(false);
+        },
+      });
+      setBackendPending(backendSender.current.pending);
+      return result;
+    },
+    [backend, conversationId, methods, consumeDraft, isSubmitting, filesLoading, files.size],
+  );
+  const composerSteering = backend
+    ? {
+        effectiveAction: 'steer' as const,
+        canSteer: backend.canSendDuringRun && !backendPending,
+        canControlGeneration: false,
+        pausedOnApproval: false,
+        steerFromComposer: (text: string) => submitBackendText(text, true),
+        queueFromComposer: () => false,
+        interruptAndSend: () => false,
+        interruptSteer: () => false,
+      }
+    : steering;
+  const duringRunActive = backend
+    ? isSubmitting && backend.canSendDuringRun
+    : steering.duringRunActive;
+
   /** ⌘/Ctrl+Enter = the non-default during-run action, ⌥/Alt+Enter =
    *  interrupt & send (discards the answer), ⌘/Ctrl+Shift+Enter = interrupt &
    *  steer (keeps it) — all counterparts of Enter's `submitDuringRun`. */
   const handleDuringRunModifier = useCallback(
     (kind: 'other' | 'interrupt' | 'preempt') => {
+      // Hermes advertises Steer only; queue/preemption chords must not send or stop.
+      if (backend) return;
       const text = methods.getValues('text');
       let consumed = false;
       if (kind === 'interrupt') {
@@ -492,7 +545,7 @@ const ChatForm = memo(function ChatForm({
         methods.reset();
       }
     },
-    [methods, steering],
+    [backend, methods, steering],
   );
 
   const handleKeyUp = useHandleKeyUp({
@@ -513,8 +566,8 @@ const ChatForm = memo(function ChatForm({
     // The composer IS the free-form answer box while a question pause is live.
     placeholder: composerReserved ? answerPlaceholder : placeholder,
     // Enter stays live during a run when it can steer/queue instead of send.
-    allowSubmitWhileGenerating: steering.duringRunActive,
-    onDuringRunModifier: steering.duringRunActive ? handleDuringRunModifier : undefined,
+    allowSubmitWhileGenerating: backend ? backend.canSendDuringRun : steering.duringRunActive,
+    onDuringRunModifier: duringRunActive ? handleDuringRunModifier : undefined,
     answerModeActive: answerMode.composerAnswers,
   });
 
@@ -570,15 +623,17 @@ const ChatForm = memo(function ChatForm({
    *  button takes over (Enter steers/queues; hover reveals all actions);
    *  clearing the text restores Stop. */
   const duringRunSlot = (() => {
-    if (steering.duringRunActive && (textValue?.trim() ?? '') !== '') {
+    if (duringRunActive && (textValue?.trim() ?? '') !== '') {
       return (
         <DuringRunSendButton
           ref={submitButtonRef}
           control={methods.control}
-          steering={steering}
+          steering={composerSteering}
+          availableActions={backend ? ['steer'] : undefined}
+          interruptsByDefault={backend ? false : undefined}
           getText={() => methods.getValues('text')}
           onConsumed={consumeComposer}
-          disabled={filesLoading}
+          disabled={filesLoading || backendPending}
         />
       );
     }
@@ -619,8 +674,9 @@ const ChatForm = memo(function ChatForm({
    *  queued follow-up about to start), then an ordinary send: the same route
    *  for typed, dictated, and shortcut-bound submissions. */
   const submitComposerText = useCallback(
-    (data: { text: string }): false | void =>
-      submitFromComposer(
+    (data: { text: string }): false | void => {
+      if (backend) return submitBackendText(data.text);
+      return submitFromComposer(
         {
           answerMode,
           steering,
@@ -628,8 +684,9 @@ const ChatForm = memo(function ChatForm({
           reset: () => methods.reset(),
         },
         data,
-      ),
-    [answerMode, steering, submitMessage, methods],
+      );
+    },
+    [backend, submitBackendText, answerMode, steering, submitMessage, methods],
   );
 
   return (
@@ -656,6 +713,19 @@ const ChatForm = memo(function ChatForm({
         {/* `relative` anchors the in-flight steer overlay, which floats above
             the composer (`bottom-full`) over the bottom of the thread. */}
         <div className="relative flex w-full flex-col">
+          {backend?.notices}
+          {backend?.recoverDraft && !textValue?.trim() && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                if (!methods.getValues('text')?.trim())
+                  methods.setValue('text', backend.recoverDraft ?? '', { shouldDirty: true });
+              }}
+            >
+              {localize('com_ui_hermes_restore')}
+            </Button>
+          )}
           {/* Run-scoped: `enabled` alone is any primary composer on a steerable
               endpoint, so a chip that outlives the run would strand a bubble. */}
           {steering.enabled && isSubmitting && (
@@ -688,34 +758,42 @@ const ChatForm = memo(function ChatForm({
             </div>
           )}
           <div className={cn('flex w-full items-center', isRTL && 'flex-row-reverse')}>
-            <Mention
-              index={index}
-              popoverAtom={plusPopoverAtom}
-              newConversation={generateConversation}
-              textAreaRef={textAreaRef}
-              commandChar="+"
-              placeholder="com_ui_add_model_preset"
-              includeAssistants={false}
-            />
-            <Mention
-              index={index}
-              popoverAtom={mentionPopoverAtom}
-              newConversation={newConversation}
-              textAreaRef={textAreaRef}
-            />
-            <PromptsCommand index={index} textAreaRef={textAreaRef} submitPrompt={submitPrompt} />
+            {!backend && (
+              <Mention
+                index={index}
+                popoverAtom={plusPopoverAtom}
+                newConversation={generateConversation}
+                textAreaRef={textAreaRef}
+                commandChar="+"
+                placeholder="com_ui_add_model_preset"
+                includeAssistants={false}
+              />
+            )}
+            {!backend && (
+              <Mention
+                index={index}
+                popoverAtom={mentionPopoverAtom}
+                newConversation={newConversation}
+                textAreaRef={textAreaRef}
+              />
+            )}
+            {!backend && (
+              <PromptsCommand index={index} textAreaRef={textAreaRef} submitPrompt={submitPrompt} />
+            )}
             {index === 0 && (
               <AskUserQuestionPopover conversationId={conversationId} textAreaRef={textAreaRef} />
             )}
             {index === 0 && conversationId != null && (
               <PendingToolApprovalPanel conversationId={conversationId} />
             )}
-            <SkillsCommand
-              index={index}
-              textAreaRef={textAreaRef}
-              conversationId={conversationId}
-              agentId={conversation?.agent_id}
-            />
+            {
+              <SkillsCommand
+                index={index}
+                textAreaRef={textAreaRef}
+                conversationId={conversationId}
+                agentId={conversation?.agent_id}
+              />
+            }
             <div
               data-testid="composer-surface"
               onClick={handleContainerClick}
@@ -843,16 +921,19 @@ const ChatForm = memo(function ChatForm({
                 )}
               >
                 <div className="shrink-0">
-                  <AttachFileChat
-                    conversation={conversation}
-                    disableInputs={disableInputs}
-                    files={files}
-                    setFiles={setFiles}
-                    setFilesLoading={setFilesLoading}
-                  />
+                  {
+                    <AttachFileChat
+                      conversation={conversation}
+                      disableInputs={disableInputs}
+                      files={files}
+                      setFiles={setFiles}
+                      setFilesLoading={setFilesLoading}
+                    />
+                  }
                 </div>
                 <BadgeRow
                   showEphemeralBadges={
+                    !backend &&
                     !!endpoint &&
                     !hideBadgeRow &&
                     !isAgentsEndpoint(endpoint) &&
@@ -877,7 +958,7 @@ const ChatForm = memo(function ChatForm({
                 )}
                 <div className="grow" />
                 <TokenUsage index={index} conversation={conversation} isSubmitting={isSubmitting} />
-                {SpeechToText && (
+                {SpeechToText && backend?.speechToText !== false && (
                   <AudioRecorder
                     methods={methods}
                     ask={submitComposerText}
@@ -898,25 +979,37 @@ const ChatForm = memo(function ChatForm({
                     </div>
                   )}
                 <div className={cn('shrink-0', isRTL ? 'mr-auto' : 'ml-auto')}>
-                  {isSubmitting &&
-                  (showStopButton || steering.duringRunActive) &&
-                  !answerMode.composerAnswers
-                    ? duringRunSlot
-                    : endpoint && (
-                        <SendButton
-                          ref={submitButtonRef}
-                          control={methods.control}
-                          fileCount={submittableFileCount}
-                          disabled={
-                            filesLoading ||
-                            disableInputs ||
-                            !codeWorkspace.canSubmit ||
-                            isNotAppendable ||
-                            answerMode.composerLocked ||
-                            (isSubmitting && !answerMode.composerAnswers)
-                          }
+                  {backend && isSubmitting && (
+                    <>
+                      {duringRunSlot}
+                      {duringRunActive && (textValue?.trim() ?? '') !== '' && (
+                        <StopButton
+                          stop={handleStopGenerating}
+                          setShowStopButton={setShowStopButton}
                         />
                       )}
+                    </>
+                  )}
+                  {!(backend && isSubmitting) &&
+                    (isSubmitting &&
+                    (showStopButton || steering.duringRunActive) &&
+                    !answerMode.composerAnswers
+                      ? duringRunSlot
+                      : endpoint && (
+                          <SendButton
+                            ref={submitButtonRef}
+                            control={methods.control}
+                            fileCount={submittableFileCount}
+                            disabled={
+                              filesLoading ||
+                              disableInputs ||
+                              !codeWorkspace.canSubmit ||
+                              isNotAppendable ||
+                              answerMode.composerLocked ||
+                              (isSubmitting && !answerMode.composerAnswers)
+                            }
+                          />
+                        ))}
                 </div>
               </div>
               {TextToSpeech && automaticPlayback && <AutoPlayAudio index={index} />}

@@ -1,8 +1,14 @@
-import React, { memo, useMemo, useRef, useEffect } from 'react';
+import type { Element } from 'hast';
+import { useChatBackend } from '~/Providers/ChatBackendContext';
+import { Artifact } from '~/components/Artifacts/Artifact';
+import FilePreviewDialog from './FilePreviewDialog';
+import React, { memo, useMemo, useRef, useEffect, useState } from 'react';
 import { useRecoilValue } from 'recoil';
-import { useToastContext } from '@librechat/client';
+import { Button, useToastContext } from '@librechat/client';
+import { FileText } from 'lucide-react';
 import { PermissionTypes, Permissions, apiBaseUrl } from 'librechat-data-provider';
 import {
+  extractContent,
   handleDoubleClick,
   triggerDownload,
   resolveInlineMedia,
@@ -17,6 +23,7 @@ import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 type TCodeProps = {
+  node?: Element;
   inline?: boolean;
   className?: string;
   children: React.ReactNode;
@@ -35,7 +42,9 @@ const isSingleLineCode = (children: React.ReactNode): boolean => {
 export const code: React.ElementType = memo(function MarkdownCode({
   className,
   children,
+  node,
 }: TCodeProps) {
+  const backend = useChatBackend();
   const canRunCode = useHasAccess({
     permissionType: PermissionTypes.RUN_CODE,
     permission: Permissions.USE,
@@ -45,9 +54,14 @@ export const code: React.ElementType = memo(function MarkdownCode({
   const isMath = lang === 'math';
   const isMermaid = lang === 'mermaid';
   const isSingleLine = isSingleLineCode(children);
+  const isDocument =
+    backend?.documentFences &&
+    (['html', 'markdown', 'md'].includes(lang || '') || node?.properties?.dataNativeHtml === true);
 
   const { getNextIndex, getNextMermaidIndex, resetCounter } = useCodeBlockContext();
-  const blockIndex = useRef(getNextIndex(isMath || isMermaid || isSingleLine)).current;
+  const blockIndex = useRef(
+    getNextIndex(isMath || isMermaid || (isSingleLine && !isDocument)),
+  ).current;
   /* Mermaid fences do not consume a code-block index, so every one of them in a
    * message would otherwise share `blockIndex` and collapse onto a single
    * artifact id. They carry their own sequence instead. */
@@ -66,6 +80,22 @@ export const code: React.ElementType = memo(function MarkdownCode({
         <Mermaid id={`mermaid-${mermaidIndex}`}>{content}</Mermaid>
       </MermaidErrorBoundary>
     );
+  } else if (isDocument) {
+    const documentText = extractContent(children);
+    const title =
+      lang === 'markdown' || lang === 'md'
+        ? (documentText.match(/^#\s+(.+)/)?.[1] ?? 'document.md')
+        : (documentText.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] ?? 'document.html');
+    return (
+      <Artifact
+        node={undefined}
+        identifier={`cuate-document-${blockIndex}`}
+        title={title}
+        type={lang === 'markdown' || lang === 'md' ? 'text/markdown' : 'text/html'}
+      >
+        {children}
+      </Artifact>
+    );
   } else if (isSingleLine) {
     return (
       <code onDoubleClick={handleDoubleClick} className={className}>
@@ -78,7 +108,7 @@ export const code: React.ElementType = memo(function MarkdownCode({
         lang={lang ?? 'text'}
         codeChildren={children}
         blockIndex={blockIndex}
-        allowExecution={canRunCode}
+        allowExecution={!backend && canRunCode}
       />
     );
   }
@@ -115,6 +145,23 @@ type TAnchorProps = {
 };
 
 export const a: React.ElementType = memo(function MarkdownAnchor({ href, children }: TAnchorProps) {
+  const backend = useChatBackend();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  let path: string | undefined;
+  if (href.startsWith('sandbox:/')) path = href.slice('sandbox:'.length);
+  else if ((href.startsWith('/') && !href.startsWith('//')) || href.startsWith('~/')) path = href;
+  const nativePreview = backend?.files?.preview;
+  const nativeDownload = backend?.files?.download;
+  const fileLoader = useMemo(
+    () =>
+      path && nativePreview && nativeDownload
+        ? {
+            preview: () => nativePreview(path),
+            download: () => nativeDownload(path),
+          }
+        : undefined,
+    [path, nativePreview, nativeDownload],
+  );
   const user = useRecoilValue(store.user);
   const { showToast } = useToastContext();
   const localize = useLocalize();
@@ -138,6 +185,31 @@ export const a: React.ElementType = memo(function MarkdownAnchor({ href, childre
 
   const { refetch: downloadFile } = useFileDownload(user?.id ?? '', file_id, { direct: false });
   const props: { target?: string; onClick?: React.MouseEventHandler } = { target: '_blank' };
+
+  if (fileLoader && path)
+    return (
+      <>
+        <Button asChild variant="secondary" size="sm" className="max-w-full !no-underline">
+          <a
+            href={href}
+            title={`${localize('com_ui_preview')}: ${path}`}
+            onClick={(event) => {
+              event.preventDefault();
+              setPreviewOpen(true);
+            }}
+          >
+            <FileText className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{children}</span>
+          </a>
+        </Button>
+        <FilePreviewDialog
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          fileName={path.split('/').pop() || 'file'}
+          fileLoader={fileLoader}
+        />
+      </>
+    );
 
   if (!file_id || !filename) {
     return (
@@ -222,7 +294,44 @@ export const img: React.ElementType = memo(function MarkdownImage({
   className,
   style,
 }: TImageProps) {
-  // Get the base URL from the API endpoints
+  const backend = useChatBackend();
+  const localize = useLocalize();
+  const [open, setOpen] = useState(false);
+  const [imageURL, setImageURL] = useState<string>();
+  let nativePath: string | undefined;
+  if (src?.startsWith('sandbox:/')) nativePath = src.slice('sandbox:'.length);
+  else if (src && ((src.startsWith('/') && !src.startsWith('//')) || src.startsWith('~/')))
+    nativePath = src;
+  const preview = backend?.files?.preview;
+  const download = backend?.files?.download;
+  const loader = useMemo(
+    () =>
+      nativePath && preview && download
+        ? {
+            preview: () => preview(nativePath),
+            download: () => download(nativePath),
+          }
+        : undefined,
+    [nativePath, preview, download],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    let url: string | undefined;
+    setImageURL(undefined);
+    if (loader)
+      void loader
+        .preview()
+        .then((blob) => {
+          if (cancelled || !blob.type.startsWith('image/')) return;
+          url = URL.createObjectURL(blob);
+          setImageURL(url);
+        })
+        .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [loader]);
   const baseURL = apiBaseUrl();
   /** A model writing `![DTI](5_dti.png)` is naming a file its run produced,
    *  not a path the browser can fetch. Resolving the reference against the
@@ -236,6 +345,24 @@ export const img: React.ElementType = memo(function MarkdownImage({
     return toAbsoluteFilePath(resolved, baseURL);
   }, [src, baseURL, attachmentsByName]);
 
+  if (loader && nativePath)
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label={`${localize('com_ui_preview')}: ${alt || nativePath.split('/').pop()}`}
+        >
+          <img src={imageURL} alt={alt} title={title} className={className} style={style} />
+        </button>
+        <FilePreviewDialog
+          open={open}
+          onOpenChange={setOpen}
+          fileName={nativePath.split('/').pop() || 'image'}
+          fileLoader={loader}
+        />
+      </>
+    );
   return <img src={fixedSrc} alt={alt} title={title} className={className} style={style} />;
 });
 img.displayName = 'MarkdownImage';

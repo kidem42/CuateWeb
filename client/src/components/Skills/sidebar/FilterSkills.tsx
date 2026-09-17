@@ -9,10 +9,12 @@ export default function FilterSkills({
   searchTerm,
   onSearchChange,
   className = '',
+  readOnly = false,
 }: {
   searchTerm: string;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   className?: string;
+  readOnly?: boolean;
 }) {
   const localize = useLocalize();
   const hasCreateAccess = useHasAccess({
@@ -30,7 +32,7 @@ export default function FilterSkills({
           onChange={onSearchChange}
           containerClassName="flex-1"
         />
-        {hasCreateAccess && <CreateSkillMenu />}
+        {!readOnly && hasCreateAccess && <CreateSkillMenu />}
       </div>
     </div>
   );

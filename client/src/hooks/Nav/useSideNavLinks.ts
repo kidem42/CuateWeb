@@ -1,3 +1,4 @@
+import { useActiveHermesConnection } from '~/data-provider/Hermes/useSkillCatalog';
 import { useMemo } from 'react';
 import { MCPIcon, AttachmentIcon, OpenAIMinimalIcon } from '@librechat/client';
 import {
@@ -54,6 +55,7 @@ export default function useSideNavLinks({
   endpointsConfig: TEndpointsConfig;
   includeHidePanel?: boolean;
 }) {
+  const { connection } = useActiveHermesConnection();
   const hasAccessToPrompts = useHasAccess({
     permissionType: PermissionTypes.PROMPTS,
     permission: Permissions.USE,
@@ -136,7 +138,7 @@ export default function useSideNavLinks({
       });
     }
 
-    if (hasAccessToSkills && skillsEnabled) {
+    if (connection || (hasAccessToSkills && skillsEnabled)) {
       links.push({
         title: 'com_ui_skills',
         label: '',
@@ -242,8 +244,11 @@ export default function useSideNavLinks({
       });
     }
 
-    return links;
+    return connection
+      ? links.filter((link) => link.id === 'skills' || link.id === 'hide-panel')
+      : links;
   }, [
+    connection,
     endpoint,
     endpointsConfig,
     keyProvided,

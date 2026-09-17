@@ -1,3 +1,16 @@
+# CuateWeb
+
+Web interface for native Hermes sessions, built on LibreChat's existing chat UI.
+Hermes retains session history, model execution and files. The authenticated web
+adapter uses the same Gateway APIs as Cuate for macOS and Android.
+
+- [Install with Docker](deploy/docker/README.md)
+- [Install with systemd](deploy/native/README.md)
+- [Gateway requirements](deploy/hermes/README.md)
+- [Supported behavior and limitations](deploy/native/COMPATIBILITY.md)
+
+The upstream LibreChat documentation follows below.
+
 <p align="center">
   <a href="https://librechat.ai">
     <img src="client/public/assets/logo.svg" height="256">
