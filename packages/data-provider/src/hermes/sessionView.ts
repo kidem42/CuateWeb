@@ -1,5 +1,5 @@
 import { hermesDisplayRows } from './presentation';
-import { hermesServiceNotice, hermesText } from './protocol';
+import { hermesIsContinuation, hermesServiceNotice, hermesText } from './protocol';
 import { hermesStripBriefing } from './briefing';
 import { EModelEndpoint } from '../schemas';
 import { ContentTypes, ToolCallTypes } from '../types/runs';
@@ -68,8 +68,10 @@ export function hermesMessageViews(conversationId: string, history: HermesHistor
     if (seen.has(identity)) continue;
     seen.add(identity);
     const notice = row.role === 'user' && hermesServiceNotice(hermesText(row));
+    // A client's consented continuation turn renders as a marker (TextPart).
+    const continuation = row.role === 'user' && !notice && hermesIsContinuation(hermesText(row));
     if (row.role === 'user') pending.clear();
-    const messageId = `${conversationId}.message.${identity}${notice ? '.notice' : ''}`;
+    const messageId = `${conversationId}.message.${identity}${notice ? '.notice' : ''}${continuation ? '.continuation' : ''}`;
     const display = (value: string) => (row.role === 'user' ? hermesStripBriefing(value) : value);
     const text = display(
       typeof row.content === 'string'

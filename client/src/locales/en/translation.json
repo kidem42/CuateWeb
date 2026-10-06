@@ -13,6 +13,8 @@
   "com_ui_hermes_result_unknown": "Tool result is not available in this history",
   "com_ui_hermes_steps": "Steps · {{0}}",
   "com_ui_hermes_service_report": "Background activity report",
+  "com_ui_hermes_continued": "Continued with background results",
+  "com_ui_hermes_continued_help": "The agent was asked to finish the task using the background results it received.",
   "com_ui_hermes_tools": "Hermes skills and toolsets",
   "com_ui_hermes_check_retry": "Reload history and restore draft for manual retry",
   "com_ui_hermes": "Hermes",

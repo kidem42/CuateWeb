@@ -79,6 +79,30 @@ it('keeps batch task outcomes and unknown metadata available', () => {
     'error',
   );
 });
+it('marks truncated tasks and consolidated process reports', () => {
+  const batch =
+    '[ASYNC DELEGATION BATCH COMPLETE — deleg_a]\n--- ✓ TASK 1/2: One ---\nA\n--- ⚠ TASK 2/2: Two  (status=completed, TRUNCATED: hit max_iterations — work may be incomplete) ---\nB';
+  expect(hermesNoticeDisplay(batch)?.tasks.map((task) => task.status)).toEqual(['completed', 'error']);
+  const processes =
+    '[IMPORTANT: 2 background processes completed. Treat these results as one batch and give one consolidated response; preserve failures and actionable results.]\n\n[IMPORTANT: Background process p1 exited (exit code 2).\nCommand: make\nOutput:\nx]';
+  const display = hermesNoticeDisplay(processes);
+  expect(display?.kind).toBe('background_tool');
+  expect(display?.tasks[0].status).toBe('error');
+  expect(display?.tasks[0].result).toBe(processes);
+});
+it('shows a continuation turn as the user side marker identity', () => {
+  const data = [
+    {
+      id: 4,
+      role: 'user',
+      content:
+        '<cuate-continuation>\nContinue the original task using the background results already received in this session and prepare the answer. Do not repeat completed work.\n</cuate-continuation>',
+    },
+  ];
+  const rows = hermesMessageViews(id, { data, truncated: false });
+  expect(rows[0].isCreatedByUser).toBe(true);
+  expect(rows[0].messageId.endsWith('.continuation')).toBe(true);
+});
 it('keeps notices and real user messages as reply boundaries', () => {
   const rows = hermesMessageViews(id, {
     truncated: false,

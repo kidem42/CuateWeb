@@ -6,6 +6,7 @@ import useSmoothStreaming from '~/hooks/Messages/useSmoothStreaming';
 import Markdown from '~/components/Chat/Messages/Content/Markdown';
 import CollapsibleText from './CollapsibleText';
 import { useMessageContext } from '~/Providers';
+import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 import store from '~/store';
 import { hermesNoticeDisplay, hermesSplitAttachments } from 'librechat-data-provider';
@@ -26,7 +27,9 @@ type ContentType =
 
 const TextPart = memo(function TextPart({ text, isCreatedByUser, showCursor }: TextPartProps) {
   const { messageId } = useMessageContext();
+  const localize = useLocalize();
   const native = useChatBackend()?.nativeTranscript === true;
+  const continuation = native && isCreatedByUser && messageId.endsWith('.continuation');
   const notice = useMemo(
     () =>
       native && !isCreatedByUser && messageId.endsWith('.notice')
@@ -67,6 +70,12 @@ const TextPart = memo(function TextPart({ text, isCreatedByUser, showCursor }: T
   }, [isCreatedByUser, enableUserMsgMarkdown, text, isLatestMessage]);
 
   if (notice) return <Wakeup display={notice} />;
+  if (continuation)
+    return (
+      <span className="text-xs text-text-secondary" title={localize('com_ui_hermes_continued_help')}>
+        ↪ {localize('com_ui_hermes_continued')}
+      </span>
+    );
   if (attachments?.paths.length)
     return (
       <>

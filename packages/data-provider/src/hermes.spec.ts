@@ -126,6 +126,55 @@ describe('Hermes native transcript semantics', () => {
       ]),
     ).toEqual([{ id: 'deleg_b', count: 2, timestamp: undefined }]);
   });
+  it('finishes units from consolidated deliveries but not from early task failures', () => {
+    const dispatch = {
+      id: 1,
+      role: 'tool',
+      tool_name: 'delegate_task',
+      content: JSON.stringify({
+        status: 'dispatched',
+        mode: 'background',
+        delegation_id: 'deleg_parent',
+        count: 2,
+        units: [
+          { delegation_id: 'deleg_a', task_indexes: [0] },
+          { delegation_id: 'deleg_b', task_indexes: [1] },
+        ],
+      }),
+    };
+    const early = {
+      id: 2,
+      role: 'user',
+      content: '[ASYNC DELEGATION TASK FAILED — deleg_b, task 2/2]\nTask: x\nStatus: failed',
+    };
+    expect(protocol.hermesServiceNotice(early.content)).toBe(true);
+    expect(protocol.hermesBackgroundWork([dispatch, early]).map((item) => item.id)).toEqual([
+      'deleg_a',
+      'deleg_b',
+    ]);
+    const consolidated = {
+      id: 3,
+      role: 'user',
+      content:
+        '[IMPORTANT: 2 background subagent delegations completed for this session. Treat these results as one completion batch and send at most one consolidated user-facing response. If a result does not change the current conclusion, absorb it silently.]\n\n' +
+        '[ASYNC DELEGATION COMPLETE — deleg_a]\nDone\n\n[ASYNC DELEGATION BATCH COMPLETE — deleg_b]\nDone',
+    };
+    expect(protocol.hermesServiceNotice(consolidated.content)).toBe(true);
+    expect(protocol.hermesBackgroundWork([dispatch, consolidated])).toEqual([]);
+    expect(protocol.hermesContinuationRows([consolidated])).toEqual([3]);
+  });
+  it('frames the continuation turn and recognizes the prompts of older clients', () => {
+    expect(protocol.hermesContinuationPrompt.startsWith('<cuate-continuation>\n')).toBe(true);
+    expect(protocol.hermesIsContinuation(protocol.hermesContinuationPrompt)).toBe(true);
+    expect(
+      protocol.hermesIsContinuation(
+        '  Продолжи исходную задачу с учётом фоновых результатов, уже полученных в этой сессии, и подготовь ответ. Не повторяй завершённую работу.\n',
+      ),
+    ).toBe(true);
+    expect(protocol.hermesIsContinuation('Continue the original task, please')).toBe(false);
+    expect(protocol.hermesServiceNotice(protocol.hermesContinuationPrompt)).toBe(false);
+    expect(protocol.hermesServiceNotice('[IMPORTANT: remember the milk]')).toBe(false);
+  });
   it('extracts real attachment notes and host result paths without treating prose as attachments', () => {
     expect(
       protocol.hermesSplitAttachments(

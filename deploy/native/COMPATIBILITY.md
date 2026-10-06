@@ -93,6 +93,19 @@ not merged, at head `d867abff3ee755abc79f3277d9fd436a457b67ff`. Its current fiel
 and distinguishes cost counters. The client accepts both revisions without
 changing the gateway. It does not assert which revision a user's VPS is running.
 
+## Hermes 0.21.5 (`v2026.9.24`) checked on 2026-10-06
+
+Checked against the tagged source. The HTTP routes are unchanged from 0.21.3. New
+session-stream events (`assistant.commentary`, `run.queued`, `hermes.status`) are
+ignored by this client, as before. Gateway reports written as user rows now also
+include the early `[ASYNC DELEGATION TASK FAILED …]` warning and the gateway's
+consolidated `[IMPORTANT: N background … completed …]` batches. Both render as
+service reports. A delegation unit is pending until its own `COMPLETE` or
+`BATCH COMPLETE` report arrives, including one inside a consolidated row; an
+early task failure does not finish it. The continuation turn is sent framed as
+`<cuate-continuation>…</cuate-continuation>` and is shown as a marker. Unframed
+prompts from older clients are still recognized.
+
 ## Licensing boundary
 
 Upstream LibreChat license files and attribution remain intact. This adapter was

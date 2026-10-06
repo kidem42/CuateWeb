@@ -1,8 +1,23 @@
 import { z } from 'zod';
 import type { HermesMessage } from '../hermes';
 
+/**
+ * The consented continuation turn. Framed so every client (Cuate macOS,
+ * Android, this web client) renders it as a marker, not as text the user
+ * typed; the unframed English/Spanish/Russian prompts of older clients are
+ * still recognized. Contract: Cuate shared/fixtures/service-notices.json.
+ */
 export const hermesContinuationPrompt =
-  'Continue the original task using the background results already received in this session and prepare the answer. Do not repeat completed work.';
+  '<cuate-continuation>\nContinue the original task using the background results already received in this session and prepare the answer. Do not repeat completed work.\n</cuate-continuation>';
+const legacyContinuationPrompts = new Set([
+  'Continue the original task using the background results already received in this session and prepare the answer. Do not repeat completed work.',
+  'Continúa la tarea original con los resultados en segundo plano ya recibidos en esta sesión y prepara la respuesta. No repitas el trabajo completado.',
+  'Продолжи исходную задачу с учётом фоновых результатов, уже полученных в этой сессии, и подготовь ответ. Не повторяй завершённую работу.',
+]);
+export function hermesIsContinuation(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.startsWith('<cuate-continuation>') || legacyContinuationPrompts.has(trimmed);
+}
 export const hermesRunActive = (status?: string): boolean =>
   ['running', 'queued', 'waiting_for_approval', 'stopping'].includes(status ?? '');
 export const hermesRunTerminal = (status?: string): boolean =>
@@ -17,8 +32,15 @@ export function hermesText(message: HermesMessage): string {
       .join('\n') ?? ''
   );
 }
+/**
+ * Gateway reports written as user rows: delegation results (including the
+ * early TASK FAILED warning), process reports and, since Hermes 0.21.5, the
+ * gateway's consolidated batches of either.
+ */
 export function hermesServiceNotice(text: string): boolean {
-  return /^\s*\[(ASYNC DELEGATION (BATCH )?COMPLETE|(?:IMPORTANT: )?Background process)/.test(text);
+  return /^\s*\[(ASYNC DELEGATION |(?:IMPORTANT: )?Background process|IMPORTANT: \d+ background (?:subagent delegations|processes) completed)/.test(
+    text,
+  );
 }
 export function hermesContinuationRows(rows: HermesMessage[]): number[] {
   let index = rows.length;
@@ -69,10 +91,17 @@ export function hermesBackgroundWork(
   const delivered = new Set<string>();
   for (const row of rows) {
     const text = hermesText(row);
-    if (row.role === 'user' && text.startsWith('[ASYNC DELEGATION')) {
-      const id = text.split('\n')[0].match(/deleg_[A-Za-z0-9_-]+/)?.[0];
-      if (id) {
-        delivered.add(id);
+    // A unit is delivered by its COMPLETE / BATCH COMPLETE report, which may
+    // sit inside a consolidated row; TASK FAILED is an early warning only.
+    if (row.role === 'user' && hermesServiceNotice(text)) {
+      for (const line of text.split('\n')) {
+        if (!/^\[ASYNC DELEGATION (?:BATCH )?COMPLETE/.test(line)) {
+          continue;
+        }
+        const id = line.match(/deleg_[A-Za-z0-9_-]+/)?.[0];
+        if (id) {
+          delivered.add(id);
+        }
       }
     }
     if (row.role !== 'tool' || row.tool_name !== 'delegate_task') {

@@ -108,11 +108,14 @@ export function hermesNoticeDisplay(text: string): {
   }[];
 } | null {
   if (!hermesServiceNotice(text)) return null;
-  const delegation = text.trimStart().startsWith('[ASYNC DELEGATION');
-  const headers = Array.from(text.matchAll(/^--- ([✓✗]) TASK ([^\n]+?) ---[ \t]*$/gm));
+  const delegation = /^\[(?:ASYNC DELEGATION |IMPORTANT: \d+ background subagent delegations)/.test(
+    text.trimStart(),
+  );
+  // ⚠ marks a task cut off at max_iterations: its work may be incomplete.
+  const headers = Array.from(text.matchAll(/^--- ([✓✗⚠]) TASK ([^\n]+?) ---[ \t]*$/gm));
   const tasks = headers.map((match, index) => ({
     taskId: `native-task-${index}`,
-    status: match[1] === '✗' ? ('error' as const) : ('completed' as const),
+    status: match[1] === '✓' ? ('completed' as const) : ('error' as const),
     subagentType: match[2],
     result: text
       .slice((match.index ?? 0) + match[0].length, headers[index + 1]?.index ?? text.length)
